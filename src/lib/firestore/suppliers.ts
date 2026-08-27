@@ -60,6 +60,11 @@ export const SEEDED_SUPPLIERS: Array<{ name: string; kind: string }> = [
   { name: 'Sunghee', kind: 'freelance florist' },
 ];
 
+/** Stable, readable, and the same every time for the same name. */
+function seedId(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
 /**
  * Write the starting suppliers, once, if there are none at all.
  *
@@ -75,7 +80,14 @@ export async function seedSuppliersIfEmpty(db: Firestore, uid: string): Promise<
   const batch = writeBatch(db);
 
   for (const seed of SEEDED_SUPPLIERS) {
-    const ref = doc(paths.suppliers(db));
+    // A fixed id per name, rather than a fresh one each time.
+    //
+    // This used to take a random id, which made the read-then-write above a
+    // race: two tabs opening the suppliers screen at the same moment both saw
+    // an empty collection and both seeded it, giving fifteen suppliers twice
+    // over. With the name deciding the id, a second run overwrites the first
+    // and there is nothing to duplicate.
+    const ref = doc(paths.suppliers(db), `seed_${seedId(seed.name)}`);
     batch.set(ref, {
       id: ref.id,
       name: seed.name,
@@ -143,6 +155,98 @@ export async function createSupplier(
   };
   await writeBatch(db).set(ref, { ...supplier, id: ref.id }).commit();
   return ref.id;
+}
+
+/**
+ * Write a whole imported list.
+ *
+ * In batches of 400, under Firestore's limit of 500 writes per batch, because a
+ * contacts export from an established studio is not going to be twenty rows and
+ * the failure at 501 would come after some of the list had already landed —
+ * leaving somebody to work out which half.
+ *
+ * `xeroContactId` is carried through when the file had one. That is what will
+ * let a supplier here be matched to the same contact in Xero later without
+ * anybody re-keying anything.
+ */
+export async function createSuppliers(
+  db: Firestore,
+  uid: string,
+  suppliers: Array<{
+    name: string;
+    contactName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    vatRegistered?: boolean;
+    xeroContactId?: string | null;
+  }>,
+): Promise<number> {
+  const audit = newAudit(uid);
+  let written = 0;
+
+  for (let start = 0; start < suppliers.length; start += 400) {
+    const slice = suppliers.slice(start, start + 400);
+    const batch = writeBatch(db);
+
+    for (const input of slice) {
+      const ref = doc(paths.suppliers(db));
+      const supplier: Omit<Supplier, 'id'> = {
+        name: input.name.trim(),
+        // Nothing in a contacts export says whether this is a company or a
+        // freelancer, and a wrong guess on two hundred rows is worse than a
+        // blank on two hundred rows.
+        kind: null,
+        defaultCurrency: 'GBP',
+        vatRegistered: input.vatRegistered ?? false,
+        contactName: input.contactName ?? null,
+        email: input.email ?? null,
+        phone: input.phone ?? null,
+        notes: null,
+        active: true,
+        xeroContactId: input.xeroContactId ?? null,
+        audit,
+      };
+      batch.set(ref, { ...supplier, id: ref.id });
+      written += 1;
+    }
+
+    await batch.commit();
+  }
+
+  return written;
+}
+
+/**
+ * Retire every supplier currently on the list.
+ *
+ * Deactivated, not deleted — and that is deliberate rather than a limitation.
+ * A supplier named on a commitment or a bill from two years ago cannot be
+ * allowed to vanish, or the record of what was spent stops making sense; the
+ * security rules refuse deletion outright for the same reason. A retired
+ * supplier disappears from the list and from every picker, and comes back the
+ * moment somebody ticks "include inactive".
+ *
+ * Used when a real list arrives to replace the starting one.
+ */
+export async function retireAllSuppliers(db: Firestore, uid: string): Promise<number> {
+  const existing = await getDocs(paths.suppliers(db));
+  if (existing.empty) return 0;
+
+  const audit = newAudit(uid);
+  const docs = existing.docs;
+  let retired = 0;
+
+  for (let start = 0; start < docs.length; start += 400) {
+    const batch = writeBatch(db);
+    for (const snapshot of docs.slice(start, start + 400)) {
+      if (snapshot.get('active') === false) continue;
+      batch.update(snapshot.ref, { active: false, audit });
+      retired += 1;
+    }
+    await batch.commit();
+  }
+
+  return retired;
 }
 
 export async function updateSupplier(

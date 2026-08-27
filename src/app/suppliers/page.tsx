@@ -6,6 +6,8 @@ import { useAuth } from '../../lib/auth/AuthProvider';
 import { firestore } from '../../lib/firestore/client';
 import {
   createSupplier,
+  createSuppliers,
+  retireAllSuppliers,
   seedSuppliersIfEmpty,
   setSupplierActive,
   updateSupplier,
@@ -15,6 +17,7 @@ import { watchSupplierSpend } from '../../lib/firestore/money';
 import { formatGBP } from '../../domain/money';
 import type { Supplier, Transaction } from '../../domain/types';
 import PageHeader from '../../components/PageHeader';
+import SupplierImport from '../../components/SupplierImport';
 import { colour } from '../../design/tokens';
 
 export default function SuppliersPage() {
@@ -23,6 +26,7 @@ export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[] | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [selected, setSelected] = useState<Supplier | null>(null);
 
   useEffect(
@@ -57,14 +61,46 @@ export default function SuppliersPage() {
               />{' '}
               Include inactive
             </label>
-        {editable ? (
-          <button type="button" style={btn} onClick={() => setAdding((v) => !v)}>
-            {adding ? 'Cancel' : 'Add supplier'}
-            </button>
+            {editable ? (
+              <>
+                <button
+                  type="button"
+                  style={btn}
+                  onClick={() => {
+                    setImporting(false);
+                    setAdding((v) => !v);
+                  }}
+                >
+                  {adding ? 'Cancel' : 'Add supplier'}
+                </button>
+                <button
+                  type="button"
+                  style={btn}
+                  onClick={() => {
+                    setAdding(false);
+                    setImporting((v) => !v);
+                  }}
+                >
+                  {importing ? 'Cancel import' : 'Import a list'}
+                </button>
+              </>
             ) : null}
           </>
         }
       />
+
+      {importing ? (
+        <SupplierImport
+          existing={suppliers ?? []}
+          onClose={() => setImporting(false)}
+          onImport={async (rows, replaceExisting) => {
+            // Retire first, so the new list is the whole list from the moment
+            // it lands rather than briefly sitting alongside the old one.
+            if (replaceExisting) await retireAllSuppliers(db, user.uid);
+            return createSuppliers(db, user.uid, rows);
+          }}
+        />
+      ) : null}
 
       {adding ? (
         <form
