@@ -49,6 +49,8 @@ function Budget({ project }: { project: Project }) {
   const [commitments, setCommitments] = useState<Commitment[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [openItemId, setOpenItemId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [newCategory, setNewCategory] = useState('');
 
   useEffect(() => watchCostItems(db, project.id, setItems), [db, project.id]);
   useEffect(() => watchCategories(db, project.id, setCategories), [db, project.id]);
@@ -131,16 +133,55 @@ function Budget({ project }: { project: Project }) {
         </span>
 
         {can('editBudget') ? (
-          <button
-            type="button"
-            style={btn}
-            onClick={async () => {
-              const name = window.prompt('Category name');
-              if (name) await addCategory(db, user.uid, project.id, name);
-            }}
-          >
-            Add category
-          </button>
+          adding ? (
+            // An inline field rather than window.prompt. A browser dialog
+            // steals the whole window, cannot be styled, is blocked outright
+            // in some contexts, and gives no sign of what happened after OK —
+            // which is exactly how "I typed a name and nothing happened" felt.
+            <form
+              style={{ display: 'flex', gap: 8 }}
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const name = newCategory.trim();
+                if (!name) return;
+                setAdding(false);
+                setNewCategory('');
+                await addCategory(db, user.uid, project.id, name);
+                setMessage(`Added the category "${name}".`);
+              }}
+            >
+              <input
+                autoFocus
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                placeholder="Category name"
+                style={{ ...select, width: 180 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setAdding(false);
+                    setNewCategory('');
+                  }
+                }}
+              />
+              <button type="submit" style={btn}>
+                Add
+              </button>
+              <button
+                type="button"
+                style={linkBtn}
+                onClick={() => {
+                  setAdding(false);
+                  setNewCategory('');
+                }}
+              >
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <button type="button" style={btn} onClick={() => setAdding(true)}>
+              Add category
+            </button>
+          )
         ) : null}
       </div>
 
@@ -151,10 +192,24 @@ function Budget({ project }: { project: Project }) {
       ) : null}
 
       {categories.length === 0 ? (
-        <p style={hint}>Add a category to start.</p>
+        <p style={hint}>
+          This budget has no categories yet. Add one — Florals, Labour, Transport — and the
+          grid appears underneath it.
+        </p>
       ) : (
         <BudgetGrid
           rows={rows}
+          categories={categories}
+          onAddLine={async (categoryId) => {
+            if (readOnly) return;
+            const last = rows.filter((r) => r.categoryId === categoryId).at(-1);
+            await insertLine(db, user.uid, project.id, {
+              subEventId: activeSubEvent ?? subEvents[0]?.id ?? '',
+              categoryId,
+              after: last ? (itemById(last.id)?.sortKey ?? null) : null,
+              before: null,
+            });
+          }}
           onCommit={async (rowId, patch) => {
             if (readOnly) return;
             const item = itemById(rowId);

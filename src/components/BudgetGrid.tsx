@@ -30,6 +30,12 @@ import { HEADINGS, cellText, interpret, type GridRow } from '../lib/budget/inter
 
 export interface BudgetGridProps {
   rows: GridRow[];
+  /**
+   * Every category on the project, in order — not only those that happen to
+   * have lines. The grid is drawn from these, so an empty category is still
+   * visible and still has somewhere to type.
+   */
+  categories: Array<{ id: string; name: string }>;
   onCommit: (rowId: string, patch: { description?: string; mode?: CostMode; values?: CostValues }) => void;
   onInsertBelow: (afterRowId: string | null) => void;
   onInsertAbove: (beforeRowId: string) => void;
@@ -37,6 +43,8 @@ export interface BudgetGridProps {
   onDelete: (rowId: string) => void;
   onPaste: (afterRowId: string | null, rows: Array<{ description: string; mode: CostMode; values: CostValues }>) => void;
   onOpenDetails?: (rowId: string) => void;
+  /** Add the first (or next) line to a category. */
+  onAddLine?: (categoryId: string) => void;
   onUndo?: () => void;
   onRedo?: () => void;
 }
@@ -44,7 +52,7 @@ export interface BudgetGridProps {
 export type { GridRow } from '../lib/budget/interpret';
 
 export default function BudgetGrid(props: BudgetGridProps) {
-  const { rows } = props;
+  const { rows, categories } = props;
   const [state, setState] = useState(initialGridState);
   const [invalid, setInvalid] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -154,22 +162,7 @@ export default function BudgetGrid(props: BudgetGridProps) {
 
   // Category headings are rendered between lines but are never focusable, so
   // the focus index stays a simple index into the line list.
-  const body: React.ReactNode[] = [];
-  let lastCategory: string | null = null;
-
-  rows.forEach((row, index) => {
-    if (row.categoryId !== lastCategory) {
-      lastCategory = row.categoryId;
-      body.push(
-        <tr key={`cat-${row.categoryId}`}>
-          <th colSpan={4} scope="colgroup" style={S.categoryCell}>
-            {row.categoryName}
-          </th>
-        </tr>,
-      );
-    }
-
-    body.push(
+  const renderRow = (row: GridRow, index: number) => (
       <tr key={row.id}>
         {COLUMNS.map((col) => {
           const focused = state.focus.row === index && state.focus.col === col;
@@ -231,9 +224,65 @@ export default function BudgetGrid(props: BudgetGridProps) {
             </td>
           );
         })}
+      </tr>
+  );
+
+  /**
+   * The body is drawn from the CATEGORIES, not from the lines.
+   *
+   * Drawing it from the lines meant a category with nothing in it did not
+   * exist on screen — so a new project, which has categories and no lines,
+   * showed an empty table with no way to type into it. Adding a category
+   * appeared to do nothing, because nothing about the screen changed.
+   *
+   * A category is a place to put lines. It has to be visible before there are
+   * any, or there is nowhere to put the first one.
+   */
+  const indexOfRow = new Map(rows.map((row, index) => [row.id, index]));
+  const known = new Set(categories.map((c) => c.id));
+  const orphaned = rows.filter((row) => !known.has(row.categoryId));
+
+  const sections = [
+    ...categories.map((category) => ({
+      id: category.id,
+      name: category.name,
+      lines: rows.filter((row) => row.categoryId === category.id),
+      canAdd: true,
+    })),
+    // A line whose category has been deleted is still a line, and still money.
+    // It is shown rather than dropped.
+    ...(orphaned.length > 0
+      ? [{ id: '__orphaned', name: 'Uncategorised', lines: orphaned, canAdd: false }]
+      : []),
+  ];
+
+  const body: React.ReactNode[] = [];
+  for (const section of sections) {
+    body.push(
+      <tr key={`cat-${section.id}`}>
+        <th colSpan={4} scope="colgroup" style={S.categoryCell}>
+          {section.name}
+        </th>
       </tr>,
     );
-  });
+
+    for (const row of section.lines) {
+      body.push(renderRow(row, indexOfRow.get(row.id) ?? 0));
+    }
+
+    if (section.canAdd && props.onAddLine) {
+      const onAddLine = props.onAddLine;
+      body.push(
+        <tr key={`add-${section.id}`}>
+          <td colSpan={4} style={S.addCell}>
+            <button type="button" style={S.addButton} onClick={() => onAddLine(section.id)}>
+              + Add a line
+            </button>
+          </td>
+        </tr>,
+      );
+    }
+  }
 
   // A total across lines whose budget was never recorded is not a total.
   const budgetKnown = rows.every((r) => r.values.budgetCost !== null);
@@ -308,6 +357,19 @@ export default function BudgetGrid(props: BudgetGridProps) {
 
 /** Layout only. No brand: the visual design comes after the interaction works. */
 const S: Record<string, React.CSSProperties> = {
+  addCell: {
+    padding: '4px 0 10px',
+    borderBottom: '1px solid #f0f0f0',
+  },
+  addButton: {
+    background: 'none',
+    border: 'none',
+    padding: '2px 0',
+    font: 'inherit',
+    fontSize: 12,
+    color: '#c10001',
+    cursor: 'pointer',
+  },
   wrap: { outline: 'none', fontFamily: 'system-ui, sans-serif', fontSize: 14 },
   table: { borderCollapse: 'collapse', width: '100%', fontVariantNumeric: 'tabular-nums' },
   head: {

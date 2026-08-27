@@ -88,6 +88,14 @@ function seed(): DemoRow[] {
   ];
 }
 
+/** The demo has no database, so its categories are stated rather than loaded. */
+const DEMO_CATEGORIES = [
+  { id: 'vatican', name: 'Vatican Florals' },
+  { id: 'castle', name: 'Castle Florals' },
+  { id: 'labour', name: 'Labour / Team' },
+  { id: 'contingency', name: 'Contingency' },
+];
+
 export default function BudgetDemoPage() {
   const [rows, setRows] = useState<DemoRow[]>(seed);
   const [log, setLog] = useState<string[]>([]);
@@ -140,6 +148,7 @@ export default function BudgetDemoPage() {
 
       <BudgetGrid
         rows={displayed}
+        categories={DEMO_CATEGORIES}
         onCommit={(id, patch) => {
           setRows((current) =>
             current.map((r) =>
