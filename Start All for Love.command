@@ -25,7 +25,10 @@ stop() {
   kill 0 2>/dev/null
   exit 0
 }
-trap stop INT TERM
+# HUP is what closing the Terminal window sends. Without it the emulators
+# outlive the window that started them, invisibly, and the next run finds its
+# ports taken by something the user cannot see to close.
+trap stop INT TERM HUP
 
 clear
 say "All for Love — Projects, running on this Mac"
