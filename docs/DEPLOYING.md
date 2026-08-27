@@ -56,8 +56,10 @@ In the Firebase console, in `all-for-love-8ca52`:
 - Go to the **Users** tab → **Add user** → your own email address and a
   password you choose. You will use these to sign in.
 
-**Storage** — left menu, **Get started**. Production mode, location
-**`europe-west2`**.
+**Storage** — this one now needs the Blaze plan; Firebase will not create a
+bucket on the free plan at all. **Skip it for now.** It is only used for file
+attachments on budget lines, which are not built yet. It gets switched on with
+Blaze, later on this page.
 
 ---
 
@@ -169,17 +171,18 @@ the site. Nothing else to do.
 
 ## Two things still to come
 
-**The Blaze plan.** Two features need it: budget **approval**, and the
-automatic recalculation that keeps the projects list up to date. Everything
-else — building budgets, recording commitments and costs, forecasting,
-profitability — works on the free plan.
+**The Blaze plan.** Three things need it: budget **approval**, the automatic
+recalculation that keeps the projects list up to date, and file **Storage**.
+Everything else — building budgets, recording commitments and costs,
+forecasting, profitability — works on the free plan.
 
 When you are ready: Firebase console → the gear → **Usage and billing** →
 **Modify plan** → **Blaze**. At this size it costs pennies a month, but set a
 limit while you are there: Google Cloud → Billing → **Budgets and alerts** →
 **£20 a month**.
 
-Then GitHub → Actions → **Deploy Cloud Functions** → **Run workflow**. Once.
+Then GitHub → Actions → **Deploy Cloud Functions and Storage** → **Run
+workflow**. Once.
 
 **A custom address.** Firebase console → Hosting → **Add custom domain**, for
 something like `projects.allforlovelondon.com`. Firebase gives you two DNS

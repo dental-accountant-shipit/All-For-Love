@@ -1,13 +1,14 @@
-# The Cloud Functions — the rollup chain and budget approval.
+# Everything that needs the Blaze plan: the Cloud Functions — the rollup chain
+# and budget approval — and the Storage rules, since Firebase will not create a
+# Storage bucket at all on the free plan.
 #
-# Separate from the main deploy, and started by hand, because functions
-# require the Blaze plan. Until Blaze is on this would fail on every push and
-# make a working pipeline look broken.
+# Separate from the main deploy and started by hand, because until Blaze is on
+# this would fail on every push and make a working pipeline look broken.
 #
-# To run it: the Actions tab in GitHub, "Deploy Cloud Functions" on the left,
-# then the "Run workflow" button.
+# To run it: the Actions tab in GitHub, "Deploy Cloud Functions and Storage"
+# on the left, then the "Run workflow" button.
 
-name: Deploy Cloud Functions
+name: Deploy Cloud Functions and Storage
 
 on:
   workflow_dispatch:
@@ -42,6 +43,6 @@ jobs:
       - name: Deploy
         run: |
           npx --yes firebase-tools@latest deploy \
-            --only functions \
+            --only functions,storage \
             --non-interactive \
             --project all-for-love-8ca52

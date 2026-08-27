@@ -4,9 +4,14 @@
 # a short explanation rather than failing, so the repository is not covered in
 # red crosses before Firebase exists.
 #
-# What it deploys: the website, the Firestore security rules, the database
-# indexes and the Storage rules. NOT the Cloud Functions — those need the
-# Blaze plan and have their own workflow you start by hand.
+# What it deploys: the website, the Firestore security rules and the database
+# indexes.
+#
+# NOT the Cloud Functions, and NOT the Storage rules. Both need the Blaze
+# plan — Firebase will not even create a Storage bucket on the free plan — so
+# deploying them here would fail on every push and make a working pipeline
+# look broken. They have their own workflow, started by hand, for once Blaze
+# is on.
 
 name: Deploy
 
@@ -76,7 +81,7 @@ jobs:
         if: steps.check.outputs.ready == 'yes'
         run: |
           npx --yes firebase-tools@latest deploy \
-            --only hosting,firestore:rules,firestore:indexes,storage \
+            --only hosting,firestore:rules,firestore:indexes \
             --non-interactive \
             --project all-for-love-8ca52
 
