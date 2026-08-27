@@ -180,6 +180,50 @@ fi
 # Go
 # --------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------
+# Anything already running?
+# --------------------------------------------------------------------------
+
+# A previous window left open holds the ports, and the emulators respond by
+# printing a wall of "port taken" into a log file and shutting themselves down.
+# The application then starts perfectly well against the *old* database, which
+# looks like everything working until something is mysteriously missing from it.
+# Better to notice here.
+
+busy=""
+for port in 9099 8080 5001 9199 4400; do
+  if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then busy="$busy $port"; fi
+done
+
+if [ -n "$busy" ]; then
+  say "This is already running somewhere"
+  cat <<'MESSAGE'
+Another copy has the local database open — almost certainly a Terminal window
+from earlier that is still sitting there. Two copies cannot share it.
+
+If you carry on, this will stop the old one first. Nothing is lost: the work is
+kept in the .local-data folder either way.
+
+MESSAGE
+  read -r -p "Press Return to stop the old one and carry on, or close this window. "
+
+  # Only our own emulators, matched by what is actually listening on those
+  # ports — not a blanket kill of anything that happens to be in the way.
+  for port in 9099 8080 5001 9199 4400 4000 4500; do
+    for pid in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null); do
+      case "$(ps -o comm= -p "$pid" 2>/dev/null)" in
+        *java*|*node*|*firebase*) kill "$pid" 2>/dev/null ;;
+      esac
+    done
+  done
+
+  note "Waiting for it to let go…"
+  for _ in $(seq 1 20); do
+    lsof -nP -iTCP:9099 -sTCP:LISTEN >/dev/null 2>&1 || break
+    sleep 1
+  done
+fi
+
 mkdir -p .local-data
 
 say "Starting the local database…"
