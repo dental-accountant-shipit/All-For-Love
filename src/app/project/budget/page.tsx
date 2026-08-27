@@ -8,7 +8,13 @@ import CostItemDrawer from '../../../components/CostItemDrawer';
 import type { GridRow } from '../../../lib/budget/interpret';
 import { useAuth } from '../../../lib/auth/AuthProvider';
 import { firestore } from '../../../lib/firestore/client';
-import { watchCategories, watchSubEvents, addCategory } from '../../../lib/firestore/projects';
+import {
+  watchCategories,
+  watchSubEvents,
+  addCategory,
+  addStandardCategories,
+  STARTING_CATEGORIES,
+} from '../../../lib/firestore/projects';
 import {
   deleteLine,
   duplicateLine,
@@ -116,6 +122,14 @@ function Budget({ project }: { project: Project }) {
   if (!user) return null;
 
   const readOnly = !can('editBudget');
+  // Projects created before the starting set existed have whatever they were
+  // given at the time, which for the first real project was one category
+  // called "General". Offering the rest is a button, not a migration: nobody
+  // wants categories appearing in a budget they are part-way through.
+  const have = new Set(categories.map((c) => c.name.trim().toLowerCase()));
+  const missingStandard = STARTING_CATEGORIES.filter(
+    (c) => !have.has(c.name.toLowerCase()),
+  ).map((c) => c.name);
   const lastOf = (categoryId: string) =>
     rows.filter((r) => r.categoryId === categoryId).at(-1)?.id ?? null;
   const itemById = (id: string) => items.find((i) => i.id === id);
@@ -200,9 +214,28 @@ function Budget({ project }: { project: Project }) {
               </button>
             </form>
           ) : (
-            <button type="button" style={btn} onClick={() => setAdding(true)}>
-              Add category
-            </button>
+            <>
+              {missingStandard.length > 0 ? (
+                <button
+                  type="button"
+                  style={btn}
+                  title={`Adds ${missingStandard.join(', ')}`}
+                  onClick={async () => {
+                    const added = await addStandardCategories(db, user.uid, project.id);
+                    setMessage(
+                      added.length > 0
+                        ? `Added ${added.join(', ')}.`
+                        : 'This project already has all of them.',
+                    );
+                  }}
+                >
+                  Add the standard {missingStandard.length}
+                </button>
+              ) : null}
+              <button type="button" style={btn} onClick={() => setAdding(true)}>
+                Add category
+              </button>
+            </>
           )
         ) : null}
       </div>

@@ -262,6 +262,49 @@ export async function addCategory(
 }
 
 /**
+ * Add whichever of the standard categories a project is missing.
+ *
+ * The starting set is applied when a project is created, which does nothing
+ * for a project created before it existed — and nothing for one where somebody
+ * deleted a category in January and wants it back in March. Matched on name,
+ * case-insensitively, so running it twice adds nothing and a renamed category
+ * is left alone rather than duplicated.
+ *
+ * Returns the names actually added, so the screen can say what happened rather
+ * than leaving somebody to count.
+ */
+export async function addStandardCategories(
+  db: Firestore,
+  uid: string,
+  projectId: string,
+): Promise<string[]> {
+  const existing = await getDocs(query(paths.categories(db, projectId), orderBy('sortKey')));
+  const have = new Set(existing.docs.map((d) => d.data().name.trim().toLowerCase()));
+  const missing = STARTING_CATEGORIES.filter((c) => !have.has(c.name.toLowerCase()));
+  if (missing.length === 0) return [];
+
+  let sortKey: string | null = existing.docs.at(-1)?.data().sortKey ?? null;
+  const batch = writeBatch(db);
+  const audit = newAudit(uid);
+
+  for (const starter of missing) {
+    sortKey = keyBetween(sortKey, null);
+    const ref = doc(paths.categories(db, projectId));
+    batch.set(ref, {
+      id: ref.id,
+      projectId,
+      name: starter.name,
+      sortKey,
+      includeInContingencyBase: starter.includeInContingencyBase,
+      audit,
+    });
+  }
+
+  await batch.commit();
+  return missing.map((c) => c.name);
+}
+
+/**
  * Take a category in or out of the contingency base.
  *
  * This changes what the client is charged, so it belongs to whoever may edit a
