@@ -73,3 +73,32 @@ describe('Firebase Hosting can serve what the build produces', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+
+describe('the categories a new project starts with', () => {
+  it('is a real list, not an empty one', async () => {
+    const { STARTING_CATEGORIES } = await import('../firestore/projects');
+    // A project that starts with nothing is a project with nowhere to type.
+    expect(STARTING_CATEGORIES.length).toBeGreaterThanOrEqual(5);
+    expect(STARTING_CATEGORIES.map((c) => c.name)).toContain('Florals');
+    expect(STARTING_CATEGORIES.map((c) => c.name)).toContain('Contingency');
+  });
+
+  it('keeps Creative out of the contingency base', async () => {
+    const { STARTING_CATEGORIES } = await import('../firestore/projects');
+    // Matching how All for Love price, and carried as a setting on the
+    // category so it survives a rename.
+    const creative = STARTING_CATEGORIES.find((c) => c.name === 'Creative');
+    expect(creative?.includeInContingencyBase).toBe(false);
+    expect(
+      STARTING_CATEGORIES.filter((c) => c.includeInContingencyBase === false),
+    ).toHaveLength(1);
+  });
+
+  it('has no duplicate names', async () => {
+    const { STARTING_CATEGORIES } = await import('../firestore/projects');
+    const names = STARTING_CATEGORIES.map((c) => c.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+});

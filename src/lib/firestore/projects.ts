@@ -50,6 +50,28 @@ export interface NewProjectInput {
   subEventNames?: string[];
 }
 
+/**
+ * The categories a new project starts with.
+ *
+ * Taken from All for Love's own master budget rather than invented, so a new
+ * project already has the shape of the work. They are ordinary categories from
+ * the moment they exist: rename them, delete them, add others, and nothing in
+ * the engine knows the difference.
+ *
+ * Creative sits outside the contingency base, matching how All for Love price.
+ * That travels with the category as a setting, so it survives a rename — the
+ * engine never looks at what a category is called.
+ */
+export const STARTING_CATEGORIES: Array<{ name: string; includeInContingencyBase: boolean }> = [
+  { name: 'Florals', includeInContingencyBase: true },
+  { name: 'Labour / Team', includeInContingencyBase: true },
+  { name: 'Catering', includeInContingencyBase: true },
+  { name: 'Transport, Site Visits', includeInContingencyBase: true },
+  { name: 'Admin, Equipment', includeInContingencyBase: true },
+  { name: 'Creative', includeInContingencyBase: false },
+  { name: 'Contingency', includeInContingencyBase: true },
+];
+
 const EMPTY_ROLLUP = {
   budgetCost: 0,
   budgetCostKnown: true,
@@ -112,15 +134,19 @@ export async function createProject(
     batch.set(ref, { ...subEvent, id: ref.id });
   });
 
-  const categoryRef = doc(paths.categories(db, projectRef.id));
-  const category: Omit<Category, 'id'> = {
-    projectId: projectRef.id,
-    name: 'General',
-    sortKey: keyBetween(null, null),
-    includeInContingencyBase: DEFAULT_INCLUDE_IN_CONTINGENCY_BASE,
-    audit,
-  };
-  batch.set(categoryRef, { ...category, id: categoryRef.id });
+  let categoryKey: string | null = null;
+  for (const starter of STARTING_CATEGORIES) {
+    categoryKey = keyBetween(categoryKey, null);
+    const ref = doc(paths.categories(db, projectRef.id));
+    const category: Omit<Category, 'id'> = {
+      projectId: projectRef.id,
+      name: starter.name,
+      sortKey: categoryKey,
+      includeInContingencyBase: starter.includeInContingencyBase,
+      audit,
+    };
+    batch.set(ref, { ...category, id: ref.id });
+  }
 
   const versionRef = doc(paths.budgetVersions(db, projectRef.id));
   batch.set(versionRef, {
