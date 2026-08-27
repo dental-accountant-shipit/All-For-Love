@@ -17,8 +17,21 @@
 const HOST = '127.0.0.1:9099';
 const PROJECT = process.env.GCLOUD_PROJECT ?? 'all-for-love-local';
 
-export const LOCAL_EMAIL = 'director@local';
 export const LOCAL_PASSWORD = 'localdev';
+
+/**
+ * Two accounts, because there are two roles.
+ *
+ * The director is who you are day to day. The administrator exists only for the
+ * things the rules deliberately keep away from everybody else — chiefly the
+ * workbook import, which writes approved budget history no client is allowed to
+ * write. Seeding one account with both roles would be more convenient and would
+ * quietly destroy the distinction the whole permission model rests on.
+ */
+export const LOCAL_ACCOUNTS = [
+  { email: 'director@local', role: 'director' },
+  { email: 'admin@local', role: 'admin' },
+];
 
 async function api(path, body) {
   const response = await fetch(
@@ -71,19 +84,9 @@ async function waitForEmulator(seconds = 600) {
   return false;
 }
 
-async function main() {
-  if (!(await waitForEmulator())) {
-    console.error(
-      '\n  The local database did not start.\n' +
-        '\n  What went wrong is written down in  .local-emulators.log  in this\n' +
-        '  folder — the last few lines of it are the useful part. Closing this\n' +
-        '  window and double-clicking Start again is worth trying first.\n',
-    );
-    process.exit(0); // Not fatal — the app still runs, you just cannot sign in.
-  }
-
+async function seed({ email, role }) {
   const signUp = await api('accounts:signUp', {
-    email: LOCAL_EMAIL,
+    email,
     password: LOCAL_PASSWORD,
     returnSecureToken: true,
   });
@@ -93,7 +96,7 @@ async function main() {
   if (!uid) {
     // Already exists, which is fine — sign in to find its id.
     const signIn = await api('accounts:signInWithPassword', {
-      email: LOCAL_EMAIL,
+      email,
       password: LOCAL_PASSWORD,
       returnSecureToken: true,
     });
@@ -101,8 +104,8 @@ async function main() {
   }
 
   if (!uid) {
-    console.error('Could not create the local account.');
-    process.exit(0);
+    console.error(`Could not create ${email}.`);
+    return false;
   }
 
   // The role lives in a custom claim, exactly as it does in production — the
@@ -115,11 +118,39 @@ async function main() {
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ customClaims: JSON.stringify({ role: 'director' }) }),
+      body: JSON.stringify({ customClaims: JSON.stringify({ role }) }),
     },
   ).catch(() => {});
 
-  console.log(`\n  Sign in with  ${LOCAL_EMAIL}  /  ${LOCAL_PASSWORD}   (director)\n`);
+  return true;
+}
+
+async function main() {
+  if (!(await waitForEmulator())) {
+    console.error(
+      '\n  The local database did not start.\n' +
+        '\n  What went wrong is written down in  .local-emulators.log  in this\n' +
+        '  folder — the last few lines of it are the useful part. Closing this\n' +
+        '  window and double-clicking Start again is worth trying first.\n',
+    );
+    process.exit(0); // Not fatal — the app still runs, you just cannot sign in.
+  }
+
+  const made = [];
+  for (const account of LOCAL_ACCOUNTS) {
+    if (await seed(account)) made.push(account);
+  }
+
+  if (made.length === 0) {
+    console.error('No local accounts could be created.');
+    process.exit(0);
+  }
+
+  console.log('');
+  for (const { email, role } of made) {
+    console.log(`  Sign in with  ${email}  /  ${LOCAL_PASSWORD}   (${role})`);
+  }
+  console.log('');
 }
 
 main().catch((error) => {

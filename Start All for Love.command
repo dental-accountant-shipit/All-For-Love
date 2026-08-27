@@ -175,7 +175,9 @@ done
 say "Ready"
 cat <<'READY'
   The application     http://localhost:3000
-  Sign in with        director@local  /  localdev
+
+  Sign in as          director@local  /  localdev     — normal use
+  or                  admin@local     /  localdev     — the workbook import
 
   What is different from the live site:
     · Everything works, including budget approval and the Admin Import —
