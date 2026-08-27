@@ -31,14 +31,32 @@ note() { printf "%s%s%s\n" "$dim" "$1" "$off"; }
 # end up telling somebody their work is safe when it is not.
 save_now() {
   mkdir -p .local-data
+
+  # Ask, then WAIT. The export is not instant — a real supplier list is
+  # sixteen hundred documents — and the first version of this asked, checked
+  # once, found nothing yet, and went on to kill the emulators mid-write. The
+  # log said it plainly afterwards: "Received SIGTERM 2 times. You have forced
+  # the Emulator Suite to exit without waiting." Everything since the last
+  # start went with it.
   curl -fsS -X POST "http://127.0.0.1:4400/emulators/export" \
     -H "Content-Type: application/json" \
-    -d "{\"path\":\"$(pwd)/.local-data\"}" >/dev/null 2>&1
+    -d "{\"path\":\"$(pwd)/.local-data\"}" >/dev/null 2>&1 &
+  local request=$!
 
-  if [ -f .local-data/firebase-export-metadata.json ]; then
-    note "Saved. ($(find .local-data -type f | wc -l | tr -d ' ') files in .local-data)"
-    return 0
-  fi
+  for _ in $(seq 1 90); do
+    if [ -f .local-data/firebase-export-metadata.json ]; then
+      # The metadata file appears at the end of a successful export, but give
+      # the last writes a moment to settle before anything is killed.
+      sleep 2
+      note "Saved — $(find .local-data -type f | wc -l | tr -d ' ') files in .local-data"
+      return 0
+    fi
+    printf "."
+    sleep 1
+  done
+
+  kill "$request" 2>/dev/null
+  echo
   return 1
 }
 
@@ -60,7 +78,7 @@ if [ -z "$found" ]; then
   exit 0
 fi
 
-note "Saving your work…"
+note "Saving your work… (this can take a minute — do not close the window)"
 if ! save_now; then
   say "It could not save the local database"
   cat <<'MESSAGE'

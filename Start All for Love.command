@@ -20,13 +20,32 @@ say()  { printf "\n%s%s%s\n" "$bold" "$1" "$off"; }
 note() { printf "%s%s%s\n" "$dim" "$1" "$off"; }
 
 stop() {
-  say "Stopping…"
-  # Ask the emulators to write their data out before anything is killed. They
-  # only do it on a clean exit otherwise, so a forced stop — or a Mac shutting
-  # down — would throw away everything since the last start.
+  say "Stopping — saving your work first"
+  note "This can take a minute on a big list. Please wait."
+
+  # Ask the emulators to write their data out, and wait for it to finish before
+  # signalling anything. They only export on a clean exit otherwise, and a
+  # signal sent while the export is running aborts it — which is exactly how a
+  # day's work was lost once already.
+  mkdir -p .local-data
   curl -fsS -X POST "http://127.0.0.1:4400/emulators/export" \
     -H "Content-Type: application/json" \
-    -d "{\"path\":\"$(pwd)/.local-data\"}" >/dev/null 2>&1
+    -d "{\"path\":\"$(pwd)/.local-data\"}" >/dev/null 2>&1 &
+
+  for _ in $(seq 1 90); do
+    [ -f .local-data/firebase-export-metadata.json ] && break
+    printf "."
+    sleep 1
+  done
+  echo
+
+  if [ -f .local-data/firebase-export-metadata.json ]; then
+    sleep 2
+    note "Saved."
+  else
+    note "Could not save — anything since the last start may be lost."
+  fi
+
   # Kill the whole process group so the emulators do not outlive the window.
   kill 0 2>/dev/null
   exit 0
