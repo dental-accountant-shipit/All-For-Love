@@ -26,13 +26,20 @@ note() { printf "%s%s%s\n" "$dim" "$1" "$off"; }
 # stop — which is what the escalation below eventually does, and what a Mac
 # does on shutdown — therefore throws the lot away.
 #
-# The Emulator Hub can be asked to export on demand. Doing that first means a
-# stop is never the thing that loses a day's work.
+# The Emulator Hub can be asked to export on demand. It is asked here, and then
+# the result is CHECKED, because a curl whose failure is thrown away is how you
+# end up telling somebody their work is safe when it is not.
 save_now() {
-  [ -d .local-data ] || mkdir -p .local-data
+  mkdir -p .local-data
   curl -fsS -X POST "http://127.0.0.1:4400/emulators/export" \
     -H "Content-Type: application/json" \
     -d "{\"path\":\"$(pwd)/.local-data\"}" >/dev/null 2>&1
+
+  if [ -f .local-data/firebase-export-metadata.json ]; then
+    note "Saved. ($(find .local-data -type f | wc -l | tr -d ' ') files in .local-data)"
+    return 0
+  fi
+  return 1
 }
 
 PORTS="9099 8080 5001 9199 4400 4500 4000 4001 4401 4501 9150 3000"
@@ -54,7 +61,21 @@ if [ -z "$found" ]; then
 fi
 
 note "Saving your work…"
-save_now
+if ! save_now; then
+  say "It could not save the local database"
+  cat <<'MESSAGE'
+Stopping now would lose anything done since this was last started — imported
+suppliers, budget lines, everything.
+
+Try this first: go to the Terminal window that Start opened and press
+Control-C. That shuts the emulators down tidily, which makes them save.
+
+If there is no such window, or that does not work, carry on — but expect to
+redo today's work.
+
+MESSAGE
+  read -r -p "Press Return to stop anyway, or close this window to leave it running. "
+fi
 
 # Ask politely first. Only things that are actually the emulators, the
 # application or the Firebase tooling — matched on what the process really is,
