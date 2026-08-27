@@ -6,8 +6,8 @@ terminal, and nothing on this page asks you to type a command.
 You do it once. After that, pushing from GitHub Desktop tests the code and
 publishes the site by itself.
 
-**Roughly twenty minutes.** Two copy-and-pastes, and some clicking in the
-Firebase console.
+**Roughly half an hour.** Two copy-and-pastes, one permission to grant, and
+some clicking in the Firebase console.
 
 ---
 
@@ -107,13 +107,28 @@ Click **New repository secret**.
 Back in the Firebase console: **Project settings** → the **Service accounts**
 tab → **Generate new private key** → **Generate key**. A `.json` file downloads.
 
-Open that file in TextEdit (right-click → Open With → TextEdit) and copy
-**everything** in it.
+**Open the downloaded file in Chrome, not in TextEdit.** New tab, then drag the
+`.json` onto it. Chrome shows it as plain text, and copying from a web page
+always copies text. Click in the text, **Cmd+A**, **Cmd+C**.
+
+Three things on that page look like the key and are not:
+
+- The grey code block above the blue button, starting `var admin = require(…)`.
+  That is sample code, identical for every Firebase project. It has its own
+  copy icon, which is how it gets copied by mistake.
+- Selecting the `.json` in Finder and pressing **Cmd+C**. That copies the
+  *file*, not its contents, and pastes as nothing.
+- Anything that does not begin `{"type": "service_account"`.
+
+Before saving the secret, look at what you pasted. It must start with
+`{"type": "service_account"` and end with `}`. If it does not, the deploy will
+tell you so — but it is quicker to catch here.
 
 > This one really is a secret — it can do anything in the project. Once you
 > have pasted it into GitHub, delete the downloaded file from your Downloads
-> folder. Do not put it in Google Drive, and do not send it to anyone,
-> including me.
+> folder. Do not put it in Google Drive, and do not paste it into a chat or
+> send it to anyone, including me. If it ever does end up somewhere it should
+> not, it has to be deleted and replaced — see *Revoking a key* below.
 
 Back in GitHub → **New repository secret**.
 
@@ -123,7 +138,27 @@ Back in GitHub → **New repository secret**.
 
 ---
 
-## Step 5 — Publish
+## Step 5 — Let the deploy account do its job
+
+Firebase creates a service account for the project but gives it permissions too
+narrow to deploy with, so this step is needed on every new project. Skipping it
+produces a `Permission denied to get service` error a few minutes from now.
+
+<https://console.cloud.google.com/iam-admin/iam?project=all-for-love-8ca52>
+
+Find `firebase-adminsdk-fbsvc@all-for-love-8ca52.iam.gserviceaccount.com`,
+click the **pencil** at the end of its row, then **+ ADD ANOTHER ROLE**, type
+`Editor`, choose **Editor** under *Basic*, and **Save**.
+
+Editor lets it read and write everything in the project. It cannot change
+permissions, create more keys, or delete the project — which is the right
+shape for something that only ever publishes a website and some rules.
+
+Wait two or three minutes before the next step. IAM changes are not instant.
+
+---
+
+## Step 6 — Publish
 
 GitHub → **Actions** tab → **Deploy** in the left menu → **Run workflow** →
 **Run workflow**.
@@ -136,9 +171,9 @@ Open it. You should see the sign-in screen.
 
 ---
 
-## Step 6 — Give yourself permission
+## Step 7 — Give yourself permission
 
-Sign in with the account you created in step 2. It will tell you your account
+Sign in with the account you created in step 2 (Authentication → Users → Add user). It will tell you your account
 has no role yet. That is correct — a new account can see nothing until someone
 grants it a role, otherwise anyone who got an account could give themselves
 one.
@@ -196,19 +231,39 @@ records to add wherever the domain is managed.
 the cross. The last few lines say what happened. Send me those lines — not the
 secrets, just the error text.
 
-**"Permission denied" or "caller does not have permission" during Deploy.**
-The commonest snag, and nothing you did wrong. The service account needs
-permission to publish. Go to
+**"Permission denied to get service [firestore.googleapis.com]" during
+Deploy.** The commonest snag by a distance, and nothing you did wrong. Firebase
+creates its service account with permissions too narrow to deploy with, so this
+happens on every new project.
+
+Go to
 <https://console.cloud.google.com/iam-admin/iam?project=all-for-love-8ca52>,
-find the account ending `@all-for-love-8ca52.iam.gserviceaccount.com`, click
-the pencil, **Add another role**, and add these:
+find `firebase-adminsdk-fbsvc@all-for-love-8ca52.iam.gserviceaccount.com`,
+click the **pencil** at the end of its row, **+ ADD ANOTHER ROLE**, type
+`Editor`, choose **Editor** under *Basic*, and **Save**.
 
-- Firebase Hosting Admin
-- Firebase Rules Admin
-- Cloud Datastore Owner
-- Service Account User
+Give it two or three minutes before running Deploy again — IAM changes take a
+while to take effect, and retrying immediately looks like the fix did not work.
 
-Save, then run Deploy again.
+> Do **not** try to do this from the Firebase console's *Users and permissions*
+> page. That page is for people: it accepts a service account address, closes
+> as though it worked, and grants nothing.
+
+**"Failed to authenticate, have you run firebase login?"** Despite what it
+says, this is almost never about login. It means the `FIREBASE_SERVICE_ACCOUNT`
+secret does not contain a readable key — usually because something other than
+the file's contents was pasted. The Deploy run now checks this and says which
+of the likely causes it is. Re-copy the file as described in step 4.
+
+### Revoking a key
+
+If a key is ever exposed — pasted into a chat, emailed, committed — it has to
+be replaced. It cannot be un-exposed.
+
+<https://console.cloud.google.com/iam-admin/serviceaccounts?project=all-for-love-8ca52>
+→ click `firebase-adminsdk-fbsvc@…` → the **KEYS** tab → bin icon on the
+offending key → **Delete**. Then generate a new one and update the GitHub
+secret. Deleting a key is instant and cannot be undone, which is the point.
 
 **The site loads but says Firebase is not configured.** `FIREBASE_WEB_CONFIG`
 did not paste completely. Copy the whole block again, including both curly
