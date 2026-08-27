@@ -67,7 +67,12 @@ function Budget({ project }: { project: Project }) {
   const [newCategory, setNewCategory] = useState('');
   const [catalogue, setCatalogue] = useState<CatalogueEntry[]>([]);
   const [offer, setOffer] = useState<
-    { description: string; categoryName: string; mode: CostItem['mode'] } | null
+    {
+      description: string;
+      categoryName: string;
+      mode: CostItem['mode'];
+      unit: string | null;
+    } | null
   >(null);
 
   useEffect(() => watchCostItems(db, project.id, setItems), [db, project.id]);
@@ -294,7 +299,16 @@ function Budget({ project }: { project: Project }) {
               const typed = patch.description.trim();
               if (typed && !isInCatalogue(catalogue, typed)) {
                 const category = categories.find((c) => c.id === item.categoryId);
-                setOffer({ description: typed, categoryName: category?.name ?? '', mode: item.mode });
+                // The unit travels with it. A line priced per metre that goes
+                // into the catalogue without its unit comes back as a bare
+                // quantity, and the whole point of the catalogue is that a
+                // chosen line arrives with its shape intact.
+                setOffer({
+                  description: typed,
+                  categoryName: category?.name ?? '',
+                  mode: item.mode,
+                  unit: item.details?.unit ?? null,
+                });
               }
             }
             if (patch.values && patch.mode) {
@@ -375,9 +389,11 @@ function Budget({ project }: { project: Project }) {
                 description: entry.description,
                 category: entry.categoryName,
                 mode: entry.mode,
-                unit: null,
+                unit: entry.unit,
               });
-              setMessage(`Added &ldquo;${entry.description}&rdquo; to the catalogue.`);
+              // Real quotation marks: this string is a text node, not markup,
+              // so an HTML entity here shows up as the letters &ldquo;.
+              setMessage(`Added \u201C${entry.description}\u201D to the catalogue.`);
             }}
           >
             Add it
