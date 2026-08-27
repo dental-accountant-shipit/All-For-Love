@@ -7,6 +7,16 @@ import { describe, expect, it } from 'vitest';
 import { cellText, interpret, isEditable, type GridRow } from '../interpret';
 import { lumpValues, quantityValues } from '../../../domain/values';
 
+/**
+ * Most edits produce values. The unit column produces a label instead, so the
+ * result is a union; these tests are about the numbers.
+ */
+function valued(edit: ReturnType<typeof interpret>) {
+  if (!edit || edit.kind !== 'values') throw new Error('expected a values edit');
+  return edit;
+}
+
+
 const lump: GridRow = {
   id: 'a',
   categoryId: 'c',
@@ -52,17 +62,17 @@ describe('which cells accept typing', () => {
 
 describe('filling in a quantity line', () => {
   it('takes days times rate', () => {
-    const result = interpret(perDay, 'budgetCost', '15 x 450');
-    expect(result?.mode).toBe('quantity');
-    expect(result?.values.budgetCost).toBe(675000);
-    expect(result?.values.unitCost).toBe(45000);
+    const result = valued(interpret(perDay, 'budgetCost', '15 x 450'));
+    expect(result.mode).toBe('quantity');
+    expect(result.values.budgetCost).toBe(675000);
+    expect(result.values.unitCost).toBe(45000);
   });
 
   it('re-derives the rate when a total is typed over it', () => {
-    const result = interpret(perDay, 'budgetCost', '7500');
-    expect(result?.values.budgetCost).toBe(750000);
-    expect(result?.values.unitCost).toBe(50000);
-    expect(result?.values.quantity).toBe(15);
+    const result = valued(interpret(perDay, 'budgetCost', '7500'));
+    expect(result.values.budgetCost).toBe(750000);
+    expect(result.values.unitCost).toBe(50000);
+    expect(result.values.quantity).toBe(15);
   });
 
   it('shows the working beside the total', () => {

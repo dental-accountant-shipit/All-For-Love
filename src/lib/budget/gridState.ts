@@ -9,11 +9,33 @@
  * The interface layer turns the returned intents into Firestore writes.
  */
 
-export const COLUMNS = ['description', 'budgetCost', 'clientPrice', 'profit'] as const;
+/**
+ * Quantity, unit and rate have columns of their own.
+ *
+ * They used to be reachable only by typing `15 x 450` into a money cell — a
+ * shorthand that works well once you know it and is invisible until then. The
+ * numbers were real either way; only the boxes to put them in were missing.
+ */
+export const COLUMNS = [
+  'description',
+  'quantity',
+  'unit',
+  'unitCost',
+  'budgetCost',
+  'clientPrice',
+  'profit',
+] as const;
 export type ColumnKey = (typeof COLUMNS)[number];
 
 /** Profit is derived. Nobody types into it, so nothing focuses it for editing. */
-export const EDITABLE_COLUMNS: ColumnKey[] = ['description', 'budgetCost', 'clientPrice'];
+export const EDITABLE_COLUMNS: ColumnKey[] = [
+  'description',
+  'quantity',
+  'unit',
+  'unitCost',
+  'budgetCost',
+  'clientPrice',
+];
 
 export interface GridPosition {
   /** Index into the visible line list. -1 when nothing is focused. */

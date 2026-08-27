@@ -38,7 +38,10 @@ export interface BudgetGridProps {
    * visible and still has somewhere to type.
    */
   categories: Array<{ id: string; name: string }>;
-  onCommit: (rowId: string, patch: { description?: string; mode?: CostMode; values?: CostValues }) => void;
+  onCommit: (
+    rowId: string,
+    patch: { description?: string; mode?: CostMode; values?: CostValues; unit?: string | null },
+  ) => void;
   onInsertBelow: (afterRowId: string | null) => void;
   onInsertAbove: (beforeRowId: string) => void;
   onDuplicate: (rowId: string) => void;
@@ -47,6 +50,14 @@ export interface BudgetGridProps {
   onOpenDetails?: (rowId: string) => void;
   /** Add the first (or next) line to a category. */
   onAddLine?: (categoryId: string) => void;
+  /**
+   * The category whose add-a-line form is open, and what to draw for it. The
+   * form is rendered in place, inside the section it belongs to, rather than
+   * as a dialog over the top — so the line being written stays next to the
+   * lines it is being written among.
+   */
+  addingIn?: string | null;
+  renderAddForm?: (categoryId: string) => React.ReactNode;
   /** The line catalogue, offered as you type a description. Optional. */
   catalogue?: CatalogueEntry[];
   /** A description was taken from the catalogue, shape and all. */
@@ -93,6 +104,10 @@ export default function BudgetGrid(props: BudgetGridProps) {
         return;
       }
       setInvalid(null);
+      if (result.kind === 'unit') {
+        if (result.unit !== (row.unit ?? null)) props.onCommit(row.id, { unit: result.unit });
+        return;
+      }
       props.onCommit(row.id, { mode: result.mode, values: result.values });
     },
     [props, rows],
@@ -181,9 +196,8 @@ export default function BudgetGrid(props: BudgetGridProps) {
               key={col}
               style={{
                 ...S.cell,
-                ...(col === 'description' ? S.textCell : S.numberCell),
+                ...columnStyle(col),
                 ...(derived ? S.derived : null),
-                ...(focused ? S.focused : null),
                 ...(flagged ? S.invalid : null),
               }}
               // One click, not two. Selecting a cell and then having to
@@ -236,19 +250,16 @@ export default function BudgetGrid(props: BudgetGridProps) {
                     if (state.editing !== null) commit(index, col, state.editing);
                     setState({ ...state, editing: null, editingOriginal: null });
                   }}
-                  style={S.input}
+                  style={{ ...S.input, ...S.fieldFocused }}
                 />
               ) : (
-                <span>
-                  {cellText(row, col)}
-                  {row.mode === 'quantity' && col === 'budgetCost' && row.values.quantity ? (
-                    <em style={S.hint}>
-                      {' '}
-                      {row.values.quantity}
-                      {row.unit ? ` ${row.unit}${row.values.quantity === 1 ? '' : 's'}` : ''} ×{' '}
-                      {formatGBP(row.values.unitCost ?? 0)}
-                    </em>
-                  ) : null}
+                <span
+                  style={{
+                    ...(derived ? S.readOnlyValue : focused ? S.fieldFocused : S.field),
+                    ...(!derived && cellText(row, col) === '' ? S.placeholder : null),
+                  }}
+                >
+                  {cellText(row, col) || (derived ? '' : placeholderFor(col))}
                   {row.mode === 'percentage' && col === 'clientPrice' ? (
                     <em style={S.hint}> {row.values.percentageRate}% of budget</em>
                   ) : null}
@@ -293,7 +304,7 @@ export default function BudgetGrid(props: BudgetGridProps) {
   for (const section of sections) {
     body.push(
       <tr key={`cat-${section.id}`}>
-        <th colSpan={4} scope="colgroup" style={S.categoryCell}>
+        <th colSpan={COLUMNS.length} scope="colgroup" style={S.categoryCell}>
           {section.name}
         </th>
       </tr>,
@@ -303,11 +314,19 @@ export default function BudgetGrid(props: BudgetGridProps) {
       body.push(renderRow(row, indexOfRow.get(row.id) ?? 0));
     }
 
-    if (section.canAdd && props.onAddLine) {
+    if (section.canAdd && props.addingIn === section.id && props.renderAddForm) {
+      body.push(
+        <tr key={`form-${section.id}`}>
+          <td colSpan={COLUMNS.length} style={S.formCell}>
+            {props.renderAddForm(section.id)}
+          </td>
+        </tr>,
+      );
+    } else if (section.canAdd && props.onAddLine) {
       const onAddLine = props.onAddLine;
       body.push(
         <tr key={`add-${section.id}`}>
-          <td colSpan={4} style={S.addCell}>
+          <td colSpan={COLUMNS.length} style={S.addCell}>
             <button type="button" style={S.addButton} onClick={() => onAddLine(section.id)}>
               + Add a line
             </button>
@@ -338,7 +357,7 @@ export default function BudgetGrid(props: BudgetGridProps) {
               <th
                 key={col}
                 scope="col"
-                style={{ ...S.head, ...(col === 'description' ? S.textCell : S.numberCell) }}
+                style={{ ...S.head, ...columnStyle(col) }}
               >
                 {HEADINGS[col]}
               </th>
@@ -348,16 +367,17 @@ export default function BudgetGrid(props: BudgetGridProps) {
         <tbody>{body}</tbody>
         <tfoot>
           <tr>
-            <td style={{ ...S.cell, ...S.textCell, ...S.total }}>
+            <td style={{ ...S.cell, ...columnStyle('description'), ...S.total }}>
               {rows.length} {rows.length === 1 ? 'line' : 'lines'}
             </td>
-            <td style={{ ...S.cell, ...S.numberCell, ...S.total }}>
+            <td colSpan={3} style={{ ...S.cell, ...S.total }} />
+            <td style={{ ...S.cell, ...columnStyle('budgetCost'), ...S.total }}>
               {budgetKnown ? (totals.budgetCost / 100).toFixed(2) : '—'}
             </td>
-            <td style={{ ...S.cell, ...S.numberCell, ...S.total }}>
+            <td style={{ ...S.cell, ...columnStyle('clientPrice'), ...S.total }}>
               {(totals.clientPrice / 100).toFixed(2)}
             </td>
-            <td style={{ ...S.cell, ...S.numberCell, ...S.total }}>
+            <td style={{ ...S.cell, ...columnStyle('profit'), ...S.total }}>
               {profitOf(totalValues) === null ? '—' : formatGBP(profitOf(totalValues)!)}{' '}
               <em style={S.hint}>{formatPercent(marginOf(totalValues))}</em>
             </td>
@@ -388,8 +408,49 @@ export default function BudgetGrid(props: BudgetGridProps) {
   );
 }
 
+
+/**
+ * Column widths, set once.
+ *
+ * Description takes what is left; the rest are sized to their contents so a
+ * quantity of 15 does not sit in a box built for £123,456.78.
+ */
+function columnStyle(col: ColumnKey): React.CSSProperties {
+  switch (col) {
+    case 'description':
+      return { textAlign: 'left', minWidth: 240, width: 'auto' };
+    case 'quantity':
+      return { textAlign: 'right', width: 64, whiteSpace: 'nowrap' };
+    case 'unit':
+      return { textAlign: 'left', width: 86, whiteSpace: 'nowrap' };
+    default:
+      return { textAlign: 'right', width: 128, whiteSpace: 'nowrap' };
+  }
+}
+
+/**
+ * What an empty cell says.
+ *
+ * An empty budget used to be a grid of blank space with no indication that any
+ * of it could be typed into. A placeholder in every empty field is the
+ * cheapest possible instruction, and it disappears the moment it is not needed.
+ */
+function placeholderFor(col: ColumnKey): string {
+  switch (col) {
+    case 'description':
+      return 'Type or choose a line…';
+    case 'quantity':
+      return '—';
+    case 'unit':
+      return '—';
+    default:
+      return '0.00';
+  }
+}
+
 /** Layout only. No brand: the visual design comes after the interaction works. */
 const S: Record<string, React.CSSProperties> = {
+  formCell: { padding: 0, borderBottom: '1px solid #f0f0f0' },
   addCell: {
     padding: '4px 0 10px',
     borderBottom: '1px solid #f0f0f0',
@@ -414,7 +475,31 @@ const S: Record<string, React.CSSProperties> = {
     borderBottom: '1px solid #999',
     whiteSpace: 'nowrap',
   },
-  cell: { padding: '0 8px', height: 32, borderBottom: '1px solid #e5e5e5' },
+  cell: { padding: '3px 4px', height: 38, borderBottom: '1px solid #f0efec' },
+  // Every cell that accepts typing looks like it accepts typing. The old grid
+  // drew plain text until you clicked, which gave somebody filling in their
+  // first budget nothing to aim at.
+  field: {
+    display: 'block',
+    padding: '7px 9px',
+    minHeight: 20,
+    border: '1px solid #e4dfd7',
+    borderRadius: 4,
+    background: '#fff',
+    cursor: 'text',
+    color: 'inherit',
+  },
+  fieldFocused: {
+    display: 'block',
+    padding: '7px 9px',
+    minHeight: 20,
+    border: '1px solid #333',
+    borderRadius: 4,
+    background: '#fff',
+    cursor: 'text',
+  },
+  readOnlyValue: { display: 'block', padding: '7px 9px', color: '#555' },
+  placeholder: { color: '#b9b3aa' },
   textCell: { textAlign: 'left', minWidth: 260 },
   numberCell: { textAlign: 'right', width: 150, whiteSpace: 'nowrap' },
   categoryCell: {
@@ -426,10 +511,16 @@ const S: Record<string, React.CSSProperties> = {
     borderBottom: '1px solid #e5e5e5',
   },
   focused: { outline: '2px solid #333', outlineOffset: -2 },
-  derived: { background: '#fafafa', color: '#555' },
+  derived: { background: 'transparent', color: '#555' },
   invalid: { outline: '2px solid #c10001', outlineOffset: -2 },
   total: { borderTop: '1px solid #000', borderBottom: 'none', fontWeight: 600 },
-  input: { width: '100%', font: 'inherit', textAlign: 'inherit', border: 'none', outline: 'none', background: 'transparent' },
+  input: {
+    width: '100%',
+    font: 'inherit',
+    textAlign: 'inherit',
+    outline: 'none',
+    boxSizing: 'border-box',
+  },
   hint: { fontStyle: 'normal', fontSize: 11, color: '#777' },
   error: { color: '#c10001', fontSize: 13 },
   note: { color: '#555', fontSize: 12, maxWidth: '62ch' },

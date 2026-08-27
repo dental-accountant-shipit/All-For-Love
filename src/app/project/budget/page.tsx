@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import ProjectScreen from '../../../components/ProjectScreen';
+import AddLineForm from '../../../components/AddLineForm';
 import BudgetGrid from '../../../components/BudgetGrid';
 import CostItemDrawer from '../../../components/CostItemDrawer';
 import type { GridRow } from '../../../lib/budget/interpret';
@@ -18,9 +19,11 @@ import {
 import {
   deleteLine,
   duplicateLine,
+  insertCompleteLine,
   insertLine,
   pasteRows,
   updateDescription,
+  updateUnit,
   updateStatus,
   updateValues,
   watchCostItems,
@@ -63,6 +66,9 @@ function Budget({ project }: { project: Project }) {
   const [commitments, setCommitments] = useState<Commitment[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [openItemId, setOpenItemId] = useState<string | null>(null);
+  // Which category has its add-a-line form open. One at a time: two open forms
+  // is two half-written lines and a question about which one Enter belongs to.
+  const [addingIn, setAddingIn] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   const [catalogue, setCatalogue] = useState<CatalogueEntry[]>([]);
@@ -276,16 +282,43 @@ function Budget({ project }: { project: Project }) {
             }
             await updateDetails(db, user.uid, project.id, rowId, { unit: entry.unit });
           }}
-          onAddLine={async (categoryId) => {
+          onAddLine={(categoryId) => {
             if (readOnly) return;
-            const last = rows.filter((r) => r.categoryId === categoryId).at(-1);
-            await insertLine(db, user.uid, project.id, {
-              subEventId: activeSubEvent ?? subEvents[0]?.id ?? '',
-              categoryId,
-              after: last ? (itemById(last.id)?.sortKey ?? null) : null,
-              before: null,
-            });
+            setAddingIn(categoryId);
           }}
+          addingIn={addingIn}
+          renderAddForm={(categoryId) => (
+            <AddLineForm
+              categoryName={categories.find((c) => c.id === categoryId)?.name ?? ''}
+              catalogue={catalogue}
+              onCancel={() => setAddingIn(null)}
+              onSave={async (line, addAnother) => {
+                const last = rows.filter((r) => r.categoryId === categoryId).at(-1);
+                await insertCompleteLine(
+                  db,
+                  user.uid,
+                  project.id,
+                  {
+                    subEventId: activeSubEvent ?? subEvents[0]?.id ?? '',
+                    categoryId,
+                    after: last ? (itemById(last.id)?.sortKey ?? null) : null,
+                    before: null,
+                  },
+                  line,
+                );
+                // Offered, never automatic — the same rule as the grid.
+                if (line.description && !isInCatalogue(catalogue, line.description)) {
+                  setOffer({
+                    description: line.description,
+                    categoryName: categories.find((c) => c.id === categoryId)?.name ?? '',
+                    mode: line.mode,
+                    unit: line.unit,
+                  });
+                }
+                if (!addAnother) setAddingIn(null);
+              }}
+            />
+          )}
           onCommit={async (rowId, patch) => {
             if (readOnly) return;
             const item = itemById(rowId);
@@ -310,6 +343,9 @@ function Budget({ project }: { project: Project }) {
                   unit: item.details?.unit ?? null,
                 });
               }
+            }
+            if (patch.unit !== undefined) {
+              await updateUnit(db, user.uid, project.id, rowId, patch.unit);
             }
             if (patch.values && patch.mode) {
               await updateValues(db, user.uid, project.id, rowId, patch.mode, patch.values);

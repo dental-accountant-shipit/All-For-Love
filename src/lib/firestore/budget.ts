@@ -121,6 +121,42 @@ export async function insertLine(
 }
 
 /**
+ * A whole line, written once.
+ *
+ * The form fills everything in before anything is saved, so this exists to
+ * avoid the alternative — insert a blank line, then write a description, then
+ * write values, then write a unit — which is four round trips, four rollup
+ * recomputations, and a line that exists in a half-finished state in between.
+ */
+export async function insertCompleteLine(
+  db: Firestore,
+  uid: string,
+  projectId: string,
+  at: InsertPosition,
+  line: { description: string; unit: string | null; mode: CostMode; values: CostValues },
+): Promise<string> {
+  const ref = doc(paths.costItems(db, projectId));
+  const item = blankItem(
+    projectId,
+    at.subEventId,
+    at.categoryId,
+    keyBetween(at.after, at.before),
+    uid,
+  );
+  await writeBatch(db)
+    .set(ref, {
+      ...item,
+      id: ref.id,
+      description: line.description,
+      mode: line.mode,
+      draft: recompute(line.mode, line.values),
+      details: { ...item.details, unit: line.unit },
+    })
+    .commit();
+  return ref.id;
+}
+
+/**
  * A cell commit. Only ever touches the draft block plus whatever the mode
  * derives from it, so a quantity edit and a unit-cost edit land as one
  * consistent whole rather than leaving the row briefly wrong.
@@ -148,6 +184,25 @@ export async function updateDescription(
   description: string,
 ): Promise<void> {
   await updateDoc(paths.costItemDoc(db, projectId, itemId), { description, ...touch(uid) });
+}
+
+/**
+ * The unit is display only — no calculation reads it — so it is its own small
+ * write rather than a round trip through the values. What it prevents is a
+ * quantity nobody can check: "285" in the reference workbook meant 285
+ * person-days, not 285 people, and no arithmetic can tell you which.
+ */
+export async function updateUnit(
+  db: Firestore,
+  uid: string,
+  projectId: string,
+  itemId: string,
+  unit: string | null,
+): Promise<void> {
+  await updateDoc(paths.costItemDoc(db, projectId, itemId), {
+    'details.unit': unit,
+    ...touch(uid),
+  });
 }
 
 export async function updateStatus(

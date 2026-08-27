@@ -42,3 +42,6 @@ coverage/
 _afl-*.zip
 _unpack*/
 _stale-git-locks/
+
+# Local scratch used to move work between machines — safe to delete
+_afl-transfer.tgz

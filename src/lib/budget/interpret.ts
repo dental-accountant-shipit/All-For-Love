@@ -35,6 +35,9 @@ export interface GridRow {
 
 export const HEADINGS: Record<ColumnKey, string> = {
   description: 'Description',
+  quantity: 'Qty',
+  unit: 'Unit',
+  unitCost: 'Cost each £',
   budgetCost: 'Budget Cost £',
   clientPrice: 'Client Price £',
   profit: 'Profit £',
@@ -55,7 +58,11 @@ export const HEADINGS: Record<ColumnKey, string> = {
  */
 export function isEditable(row: GridRow, col: ColumnKey): boolean {
   if (col === 'profit') return false;
-  if (col === 'clientPrice' && row.mode === 'percentage') return false;
+  if (row.mode === 'percentage') {
+    // A contingency line is a percentage of a base. It has no quantity, no
+    // unit and no rate, and its price is worked out by the rollup.
+    return col === 'description' || col === 'budgetCost';
+  }
   return true;
 }
 
@@ -63,6 +70,14 @@ export function cellText(row: GridRow, col: ColumnKey): string {
   switch (col) {
     case 'description':
       return row.description;
+    case 'quantity':
+      return row.values.quantity === null ? '' : String(row.values.quantity);
+    case 'unit':
+      return row.unit ?? '';
+    case 'unitCost':
+      // Null here is not "nothing". It means this side is a lump total rather
+      // than a rate, which is a real and deliberate state — see quantityValues.
+      return row.values.unitCost === null ? '' : (row.values.unitCost / 100).toFixed(2);
     case 'budgetCost':
       // Never recorded reads as a dash. Zero reads as zero. They differ.
       if (row.values.budgetCost === null) return '—';
@@ -85,12 +100,65 @@ export function cellText(row: GridRow, col: ColumnKey): string {
  * can be flagged rather than silently storing zero, which is how a pasted
  * budget quietly loses a line.
  */
-export function interpret(
-  row: GridRow,
-  col: ColumnKey,
-  input: string,
-): { mode: CostMode; values: CostValues } | null {
+export type CellEdit =
+  | { kind: 'values'; mode: CostMode; values: CostValues }
+  | { kind: 'unit'; unit: string | null };
+
+export function interpret(row: GridRow, col: ColumnKey, input: string): CellEdit | null {
   if (col === 'description' || col === 'profit') return null;
+
+  // The unit is a label, not a figure: no calculation reads it. It is still
+  // worth having, because a quantity of 285 turned out to mean person-days
+  // rather than people, and no arithmetic can tell you that.
+  if (col === 'unit') {
+    const unit = input.trim();
+    return { kind: 'unit', unit: unit === '' ? null : unit };
+  }
+
+  // Clearing the quantity makes the line a lump again, keeping both totals
+  // exactly as they stand. Deriving anything here would move an agreed figure.
+  if (col === 'quantity') {
+    const text = input.trim();
+    if (text === '') {
+      return {
+        kind: 'values',
+        mode: 'lump',
+        values: lumpValues(row.values.budgetCost, row.values.clientPrice),
+      };
+    }
+    const quantity = Number(text.replace(/,/g, ''));
+    if (!Number.isFinite(quantity) || quantity < 0) return null;
+    return {
+      kind: 'values',
+      mode: 'quantity',
+      values: quantityValues(quantity, row.values.unitCost, row.values.unitPrice, row.values),
+    };
+  }
+
+  // Clearing the rate returns this side to being a lump total — the state that
+  // exists for assistants charged per day and billed to the client as one
+  // figure.
+  if (col === 'unitCost') {
+    const text = input.trim();
+    const quantity = row.values.quantity ?? 1;
+    if (text === '') {
+      return {
+        kind: 'values',
+        mode: row.values.quantity === null ? 'lump' : 'quantity',
+        values:
+          row.values.quantity === null
+            ? lumpValues(row.values.budgetCost, row.values.clientPrice)
+            : quantityValues(quantity, null, row.values.unitPrice, row.values),
+      };
+    }
+    const rate = parseMoney(text);
+    if (rate === null) return null;
+    return {
+      kind: 'values',
+      mode: 'quantity',
+      values: quantityValues(quantity, rate, row.values.unitPrice, row.values),
+    };
+  }
 
   const expression = parseQuantityExpression(input);
   if (expression) {
@@ -102,6 +170,7 @@ export function interpret(
     // Typing a cost onto a line whose budget was never recorded records it.
     const unitPrice = col === 'clientPrice' ? unitAmount : row.values.unitPrice;
     return {
+      kind: 'values',
       mode: 'quantity',
       values: quantityValues(quantity, unitCost, unitPrice, row.values),
     };
@@ -117,6 +186,7 @@ export function interpret(
     const rated = col === 'budgetCost' ? row.values.unitCost : row.values.unitPrice;
     const unit = rated === null ? null : Math.round(amount / (quantity || 1));
     return {
+      kind: 'values',
       mode: 'quantity',
       values: quantityValues(
         quantity,
@@ -131,6 +201,7 @@ export function interpret(
   }
 
   return {
+    kind: 'values',
     mode: 'lump',
     values: lumpValues(
       col === 'budgetCost' ? amount : row.values.budgetCost,

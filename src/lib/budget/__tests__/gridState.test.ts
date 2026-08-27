@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  EDITABLE_COLUMNS,
   focusCell,
   handleKey,
   initialGridState,
@@ -11,6 +12,16 @@ import {
 import { interpret, type GridRow } from '../interpret';
 import { lumpValues, quantityValues } from '../../../domain/values';
 import { toPence } from '../../../domain/money';
+
+/**
+ * Most edits produce values. The unit column produces a label instead, so the
+ * result is a union; these tests are about the numbers.
+ */
+function valued(edit: ReturnType<typeof interpret>) {
+  if (!edit || edit.kind !== 'values') throw new Error('expected a values edit');
+  return edit;
+}
+
 
 const ctx: GridContext = {
   rowCount: 3,
@@ -23,11 +34,17 @@ function at(row: number, col: Parameters<typeof focusCell>[2]): GridState {
 
 describe('budget grid keyboard', () => {
   it('Tab walks the editable columns and skips derived Profit', () => {
+    // Description → Qty → Unit → Cost each → Budget → Client, then the next
+    // line. Quantity, unit and rate have boxes of their own now; they used to
+    // be reachable only through the `15 x 450` shorthand.
     let s = at(0, 'description');
-    s = handleKey(s, { key: 'Tab' }, ctx).state;
-    expect(s.focus.col).toBe('budgetCost');
-    s = handleKey(s, { key: 'Tab' }, ctx).state;
-    expect(s.focus.col).toBe('clientPrice');
+    const visited: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      s = handleKey(s, { key: 'Tab' }, ctx).state;
+      visited.push(s.focus.col);
+    }
+    expect(visited).toEqual(['quantity', 'unit', 'unitCost', 'budgetCost', 'clientPrice']);
+
     s = handleKey(s, { key: 'Tab' }, ctx).state;
     // Wraps to the next row rather than landing on Profit.
     expect(s.focus).toEqual({ row: 1, col: 'description' });
@@ -37,6 +54,13 @@ describe('budget grid keyboard', () => {
     let s = at(1, 'description');
     s = handleKey(s, { key: 'Tab', shiftKey: true }, ctx).state;
     expect(s.focus).toEqual({ row: 0, col: 'clientPrice' });
+  });
+
+  it('the unit column is reachable by keyboard, not only by mouse', () => {
+    // A column you can see and click but cannot Tab into is worse than no
+    // column: it breaks the rhythm of filling a line in left to right.
+    expect(EDITABLE_COLUMNS).toContain('unit');
+    expect(EDITABLE_COLUMNS).not.toContain('profit');
   });
 
   it('Tab stops at the end rather than wrapping to the top', () => {
@@ -97,7 +121,7 @@ describe('budget grid keyboard', () => {
       col: 'description',
       value: 'Ceremony florals',
     });
-    expect(r.state.focus).toEqual({ row: 0, col: 'budgetCost' });
+    expect(r.state.focus).toEqual({ row: 0, col: 'quantity' });
   });
 
   it('Escape abandons the edit and commits nothing', () => {
@@ -171,13 +195,13 @@ const row = (overrides: Partial<GridRow> = {}): GridRow => ({
 
 describe('interpreting what was typed into a cell', () => {
   it('stores a plain figure as a total', () => {
-    const r = interpret(row(), 'budgetCost', '4,800')!;
+    const r = valued(interpret(row(), 'budgetCost', '4,800'));
     expect(r.mode).toBe('lump');
     expect(r.values.budgetCost).toBe(toPence(4_800));
   });
 
   it('turns "15 x 320" into a quantity line', () => {
-    const r = interpret(row(), 'budgetCost', '15 x 320')!;
+    const r = valued(interpret(row(), 'budgetCost', '15 x 320'));
     expect(r.mode).toBe('quantity');
     expect(r.values.quantity).toBe(15);
     expect(r.values.unitCost).toBe(toPence(320));
@@ -188,7 +212,7 @@ describe('interpreting what was typed into a cell', () => {
     // Two bugs this exists to prevent: entering a cost as "15 x 320" used to
     // zero an agreed client price of £10,000, and deriving a rate from it
     // would have moved that price to £10,000.05.
-    const r = interpret(row(), 'budgetCost', '15 x 320')!;
+    const r = valued(interpret(row(), 'budgetCost', '15 x 320'));
     expect(r.values.clientPrice).toBe(toPence(10_000));
     expect(r.values.unitPrice).toBeNull();
   });
@@ -204,16 +228,18 @@ describe('interpreting what was typed into a cell', () => {
 
   it('edits the rate, not the total, on a line already in quantity mode', () => {
     const q = row({ mode: 'quantity', values: quantityValues(12, toPence(2_850), toPence(3_300)) });
-    const r = interpret(q, 'budgetCost', '36000')!;
+    const r = valued(interpret(q, 'budgetCost', '36000'));
     expect(r.values.quantity).toBe(12);
     expect(r.values.unitCost).toBe(toPence(3_000));
     expect(r.values.budgetCost).toBe(toPence(36_000));
   });
 
   it('accepts money as people write it', () => {
-    expect(interpret(row(), 'clientPrice', '£12,500.50')!.values.clientPrice).toBe(
+    expect(valued(interpret(row(), 'clientPrice', '£12,500.50')).values.clientPrice).toBe(
       toPence(12_500.5),
     );
-    expect(interpret(row(), 'clientPrice', '(500)')!.values.clientPrice).toBe(toPence(-500));
+    expect(valued(interpret(row(), 'clientPrice', '(500)')).values.clientPrice).toBe(
+      toPence(-500),
+    );
   });
 });
