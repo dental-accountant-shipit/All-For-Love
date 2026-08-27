@@ -212,19 +212,47 @@ MESSAGE
 
   # Only our own emulators, matched by what is actually listening on those
   # ports — not a blanket kill of anything that happens to be in the way.
-  for port in 9099 8080 5001 9199 4400 4000 4500; do
-    for pid in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null); do
-      case "$(ps -o comm= -p "$pid" 2>/dev/null)" in
-        *java*|*node*|*firebase*) kill "$pid" 2>/dev/null ;;
-      esac
-    done
-  done
+  holders() {
+    for port in 9099 8080 5001 9199 4400 4500 4000 4001 4401 4501 9150; do
+      lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null
+    done | sort -u
+  }
+
+  ours() {
+    case "$(ps -o comm= -p "$1" 2>/dev/null)" in
+      *java*|*node*|*firebase*) return 0 ;;
+      *) return 1 ;;
+    esac
+  }
+
+  for pid in $(holders); do ours "$pid" && kill "$pid" 2>/dev/null; done
 
   note "Waiting for it to let go…"
-  for _ in $(seq 1 20); do
-    lsof -nP -iTCP:9099 -sTCP:LISTEN >/dev/null 2>&1 || break
+  for _ in $(seq 1 15); do
+    [ -z "$(holders)" ] && break
     sleep 1
   done
+
+  # A polite request is not always enough, and a launcher that then carries on
+  # into "port taken" has wasted the asking.
+  if [ -n "$(holders)" ]; then
+    note "Insisting…"
+    for pid in $(holders); do ours "$pid" && kill -9 "$pid" 2>/dev/null; done
+    sleep 3
+  fi
+
+  if [ -n "$(holders)" ]; then
+    say "It will not let go"
+    echo "Still running:"
+    echo
+    for pid in $(holders); do
+      printf "    %s  %s\n" "$pid" "$(ps -o comm= -p "$pid" 2>/dev/null)"
+    done
+    echo
+    echo "Restarting the Mac will certainly clear it. Nothing is lost either way."
+    echo; read -r -p "Press Return to close. "
+    exit 1
+  fi
 fi
 
 mkdir -p .local-data
