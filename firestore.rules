@@ -60,13 +60,41 @@ service cloud.firestore {
              || request.resource.data[field] == resource.data[field];
     }
 
-    // Server-owned fields a client may never author.
+    // ---- server-owned fields a client may never author ----
+    //
+    // "Unchanged" has no meaning on a create: there is no prior document, and
+    // `resource` is null, so reaching for `resource.data` throws and the rule
+    // denies everything. That is not a theoretical edge — it made it
+    // impossible to create a project at all, because a new sub-event carries a
+    // zeroed rollup, and a batch fails as a whole.
+    //
+    // So creates get their own test. For a rollup it is that the rollup says
+    // NOTHING: sequence zero and no money in it. A new record legitimately
+    // starts life that way, the first real recompute writes sequence one, and
+    // a client still cannot fabricate a figure. For import provenance it is
+    // simply that the field is absent — an import runs through the Admin SDK,
+    // which does not pass this way at all, so a client claiming a record was
+    // imported is always lying.
+
     function rollupUntouched() {
-      return unchanged('rollup');
+      return resource == null ? rollupSaysNothing() : unchanged('rollup');
+    }
+
+    // `get` with a default rather than direct field access: the three rollup
+    // shapes do not carry identical keys, and a missing key would throw and
+    // deny rather than read as "nothing", which is the wrong way round.
+    function rollupSaysNothing() {
+      return !('rollup' in request.resource.data)
+             || (request.resource.data.rollup.get('recomputeSeq', 0) == 0
+                 && request.resource.data.rollup.get('forecastCost', 0) == 0
+                 && request.resource.data.rollup.get('actualTotal', 0) == 0
+                 && request.resource.data.rollup.get('currentAgreedClientRevenue', 0) == 0);
     }
 
     function importUntouched() {
-      return unchanged('import');
+      return resource == null
+             ? !('import' in request.resource.data)
+             : unchanged('import');
     }
 
     // ---------------------------------------------------------------- users
