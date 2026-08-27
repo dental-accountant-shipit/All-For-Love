@@ -22,6 +22,7 @@ import {
 import {
   DEFAULT_INCLUDE_IN_CONTINGENCY_BASE,
 } from '../../domain/types';
+import type { CatalogueEntry } from '../../domain/catalogue';
 import type {
   BudgetVersion,
   BudgetVersionLine,
@@ -106,3 +107,4 @@ export const commitmentConverter = converter<Commitment>();
 export const transactionConverter = converter<Transaction>();
 export const commissionConverter = converter<Commission>();
 export const supplierConverter = converter<Supplier>();
+export const catalogueConverter = converter<CatalogueEntry>();

@@ -6,6 +6,7 @@ import { useAuth } from '../../lib/auth/AuthProvider';
 import { firestore } from '../../lib/firestore/client';
 import {
   createSupplier,
+  seedSuppliersIfEmpty,
   setSupplierActive,
   updateSupplier,
   watchSuppliers,
@@ -26,6 +27,14 @@ export default function SuppliersPage() {
     () => watchSuppliers(db, setSuppliers, showInactive),
     [db, showInactive],
   );
+
+  // Seeded from the C & D workbook the first time somebody opens this screen,
+  // and never again. An empty suppliers list on day one is a screen that tells
+  // you nothing about whether it works.
+  useEffect(() => {
+    if (!user || !can('manageSuppliers')) return;
+    void seedSuppliersIfEmpty(db, user.uid).catch(() => {});
+  }, [db, user, can]);
 
   if (!user) return null;
   if (!suppliers) return <p style={{ color: '#666' }}>Loading suppliers…</p>;

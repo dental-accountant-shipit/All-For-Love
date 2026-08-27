@@ -112,6 +112,20 @@ service cloud.firestore {
       allow delete: if false; // suppliers are deactivated, never deleted
     }
 
+    // ------------------------------------------------- the line catalogue
+
+    // Account-wide, and deliberately writable by anyone who may edit a budget.
+    // A catalogue that only a director can add to is a catalogue that stops
+    // growing the first time a producer is mid-budget at 11pm — and the worst
+    // it can hold is a badly worded line somebody can rename.
+    //
+    // Everyone who can see a project can read it: a viewer cannot add lines,
+    // but the descriptions still have to render.
+    match /lineCatalogue/{entryId} {
+      allow read: if isStaff();
+      allow create, update, delete: if canEditBudget();
+    }
+
     // ------------------------------------------------------------- projects
 
     match /projects/{projectId} {

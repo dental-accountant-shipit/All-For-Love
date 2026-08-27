@@ -15,6 +15,7 @@ import {
 import {
   budgetVersionConverter,
   budgetVersionLineConverter,
+  catalogueConverter,
   categoryConverter,
   commissionConverter,
   commitmentConverter,
@@ -25,6 +26,7 @@ import {
   transactionConverter,
 } from './converters';
 
+import type { CatalogueEntry } from '../../domain/catalogue';
 import type {
   BudgetVersion,
   BudgetVersionLine,
@@ -48,6 +50,13 @@ export const projectDoc = (db: Firestore, id: string): DocumentReference<Project
 
 export const suppliers = (db: Firestore): CollectionReference<Supplier> =>
   collection(db, 'suppliers').withConverter(supplierConverter);
+
+/**
+ * The line catalogue is account-wide, not per project. The whole point is that
+ * a line typed on one event is offered on the next.
+ */
+export const catalogue = (db: Firestore): CollectionReference<CatalogueEntry> =>
+  collection(db, 'lineCatalogue').withConverter(catalogueConverter);
 
 export const commitments = (db: Firestore): CollectionReference<Commitment> =>
   collection(db, 'commitments').withConverter(commitmentConverter);

@@ -226,6 +226,15 @@ export interface ApprovedValues extends CostValues {
 export interface CostItemDetails {
   supplierId: string | null;
   supplierName: string | null;
+  /**
+   * What one unit is on a quantity line: "metre", "day", "person-day".
+   *
+   * Display only — no calculation reads it. But a quantity of 24 with no unit
+   * beside it is a figure nobody can check, and "285" in the reference
+   * workbook turned out to mean 285 person-days rather than 285 people, which
+   * is not a distinction the arithmetic can make for you.
+   */
+  unit?: string | null;
   currency: string;
   /** Rate to base currency. 1 for GBP. Manually entered — no rate feed. */
   fxRate: number;

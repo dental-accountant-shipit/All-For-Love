@@ -23,6 +23,12 @@ export interface GridRow {
   description: string;
   mode: CostMode;
   values: CostValues;
+  /**
+   * What one unit is on a quantity line — "metre", "day", "person-day".
+   * Shown beside the quantity, because 24 on its own is not a figure anybody
+   * can check.
+   */
+  unit?: string | null;
   /** Rendered but not editable — a percentage line's price is derived. */
   derivedClientPrice?: boolean;
 }

@@ -347,3 +347,38 @@ suite('the admin role can do nothing but read', () => {
     await assertSucceeds(getDoc(doc(as('admin'), 'importBatches/b1')));
   });
 });
+
+suite('the line catalogue', () => {
+  const entry = {
+    description: 'Bridal bouquet',
+    category: 'Florals',
+    mode: 'lump',
+    unit: null,
+    seeded: true,
+    usageCount: 0,
+    audit: AUDIT,
+  };
+
+  it('can be added to by anyone who edits budgets', async () => {
+    for (const role of ['director', 'producer']) {
+      await assertSucceeds(
+        setDoc(doc(as(role), `lineCatalogue/florals-bridal-bouquet-${role}`), entry),
+      );
+    }
+  });
+
+  it('is readable by everyone who can see a project', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'lineCatalogue/e1'), entry);
+    });
+    // A viewer cannot add lines, but descriptions still have to render.
+    await assertSucceeds(getDoc(doc(as('viewer'), 'lineCatalogue/e1')));
+    await assertSucceeds(getDoc(doc(as('finance'), 'lineCatalogue/e1')));
+  });
+
+  it('is closed to finance, viewers, admins and the signed-out', async () => {
+    for (const role of ['finance', 'viewer', 'admin', null]) {
+      await assertFails(setDoc(doc(as(role), 'lineCatalogue/e2'), entry));
+    }
+  });
+});

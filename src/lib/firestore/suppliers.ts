@@ -9,6 +9,7 @@
 
 import {
   doc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -21,6 +22,79 @@ import {
 import * as paths from './paths';
 import { newAudit, touch } from './projects';
 import type { Supplier } from '../../domain/types';
+
+/**
+ * The suppliers All for Love have already used, from the C & D workbook.
+ *
+ * Its supplier column is not a supplier list — it is a scratch column. It
+ * holds companies, team members, placeholders like "Various" and "Roberto??",
+ * and working notes such as "£885.16 - FIN; £1275.93 PS expenses". So this is
+ * the readable part of it, transcribed by hand rather than imported by rule,
+ * because a rule that could tell "Boomerang" from "13 EK Crew @ £100 = £1300"
+ * would be a longer and less reliable piece of work than typing them out.
+ *
+ * Crescent Moon appears twice in the workbook, spelled two ways. It is one
+ * supplier here — which is the argument for supplier records in the first
+ * place, since neither spelling could ever have been totalled with the other.
+ *
+ * Freelancers are suppliers. That is not a statement about employment, it is
+ * how the money moves: a day rate is invoiced and paid like any other cost,
+ * and a project needs to show what it paid Fin the same way it shows what it
+ * paid Hydra.
+ */
+export const SEEDED_SUPPLIERS: Array<{ name: string; kind: string }> = [
+  { name: 'Crescent Moon', kind: 'production' },
+  { name: 'Hydra', kind: 'production' },
+  { name: 'NJM', kind: 'transport' },
+  { name: 'EK', kind: 'crew' },
+  { name: 'Vianen All Flowers', kind: 'flowers' },
+  { name: 'Smilex', kind: 'equipment' },
+  { name: 'Boomerang', kind: 'transport' },
+  { name: 'IVB', kind: 'crew' },
+  { name: 'Technomat', kind: 'equipment' },
+  { name: 'Fin', kind: 'freelance florist' },
+  { name: 'Vijay', kind: 'freelance florist' },
+  { name: 'Penelope', kind: 'freelance florist' },
+  { name: 'Sarah', kind: 'freelance florist' },
+  { name: 'Kate', kind: 'freelance florist' },
+  { name: 'Sunghee', kind: 'freelance florist' },
+];
+
+/**
+ * Write the starting suppliers, once, if there are none at all.
+ *
+ * Returns how many were written — zero on every run after the first. A
+ * supplier somebody has since deactivated or renamed is never restored: the
+ * seed is a starting point, not a definition.
+ */
+export async function seedSuppliersIfEmpty(db: Firestore, uid: string): Promise<number> {
+  const existing = await getDocs(paths.suppliers(db));
+  if (!existing.empty) return 0;
+
+  const audit = newAudit(uid);
+  const batch = writeBatch(db);
+
+  for (const seed of SEEDED_SUPPLIERS) {
+    const ref = doc(paths.suppliers(db));
+    batch.set(ref, {
+      id: ref.id,
+      name: seed.name,
+      kind: seed.kind,
+      defaultCurrency: 'GBP',
+      vatRegistered: false,
+      contactName: null,
+      email: null,
+      phone: null,
+      notes: 'From the C & D Wedding workbook.',
+      active: true,
+      xeroContactId: null,
+      audit,
+    });
+  }
+
+  await batch.commit();
+  return SEEDED_SUPPLIERS.length;
+}
 
 export function watchSuppliers(
   db: Firestore,

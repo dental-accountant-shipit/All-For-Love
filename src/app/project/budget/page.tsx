@@ -19,11 +19,19 @@ import {
   updateValues,
   watchCostItems,
 } from '../../../lib/firestore/budget';
+import { updateDetails } from '../../../lib/firestore/money';
 import {
   watchProjectCommitments,
   watchProjectTransactions,
 } from '../../../lib/firestore/money';
 import { applyPercentageLines } from '../../../domain/rollup';
+import {
+  seedCatalogueIfEmpty,
+  watchCatalogue,
+  addCatalogueEntry,
+  noteCatalogueUse,
+} from '../../../lib/firestore/catalogue';
+import { isInCatalogue, type CatalogueEntry } from '../../../domain/catalogue';
 import type {
   Category,
   Commitment,
@@ -51,12 +59,25 @@ function Budget({ project }: { project: Project }) {
   const [openItemId, setOpenItemId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newCategory, setNewCategory] = useState('');
+  const [catalogue, setCatalogue] = useState<CatalogueEntry[]>([]);
+  const [offer, setOffer] = useState<
+    { description: string; categoryName: string; mode: CostItem['mode'] } | null
+  >(null);
 
   useEffect(() => watchCostItems(db, project.id, setItems), [db, project.id]);
   useEffect(() => watchCategories(db, project.id, setCategories), [db, project.id]);
   useEffect(() => watchSubEvents(db, project.id, setSubEvents), [db, project.id]);
   useEffect(() => watchProjectCommitments(db, project.id, setCommitments), [db, project.id]);
   useEffect(() => watchProjectTransactions(db, project.id, setTransactions), [db, project.id]);
+  useEffect(() => watchCatalogue(db, setCatalogue), [db]);
+
+  // There is no install step — the application is a static site, so the first
+  // person to open a budget is the one who sets it up. Seeding is idempotent
+  // and only runs when the catalogue is genuinely empty.
+  useEffect(() => {
+    if (!user || !can('editBudget')) return;
+    void seedCatalogueIfEmpty(db, user.uid).catch(() => {});
+  }, [db, user, can]);
 
   const multi = project.subEventMode === 'multiple';
   const activeSubEvent = subEventId ?? subEvents[0]?.id ?? null;
@@ -84,6 +105,7 @@ function Budget({ project }: { project: Project }) {
         description: i.description,
         mode: i.mode,
         values: i.draft,
+        unit: i.details?.unit ?? null,
       }));
   }, [items, categories, multi, activeSubEvent, project.settings]);
   // `categories` is already a dependency — it now feeds the contingency base
@@ -200,6 +222,22 @@ function Budget({ project }: { project: Project }) {
         <BudgetGrid
           rows={rows}
           categories={categories}
+          catalogue={catalogue}
+          onChooseFromCatalogue={async (rowId, entry) => {
+            if (readOnly) return;
+            const item = itemById(rowId);
+            if (!item) return;
+            noteCatalogueUse(db, entry.id);
+            await updateDescription(db, user.uid, project.id, rowId, entry.description);
+            // The shape travels with the words. A line picked as "per metre"
+            // arrives as a quantity line, so nobody can type a total into a
+            // rate column — the ambiguity that cost the reference workbook
+            // £36,820.
+            if (entry.mode !== item.mode) {
+              await updateValues(db, user.uid, project.id, rowId, entry.mode, item.draft);
+            }
+            await updateDetails(db, user.uid, project.id, rowId, { unit: entry.unit });
+          }}
           onAddLine={async (categoryId) => {
             if (readOnly) return;
             const last = rows.filter((r) => r.categoryId === categoryId).at(-1);
@@ -216,6 +254,15 @@ function Budget({ project }: { project: Project }) {
             if (!item) return;
             if (patch.description !== undefined) {
               await updateDescription(db, user.uid, project.id, rowId, patch.description);
+              // Offered, never done automatically. A budget is full of one-off
+              // descriptions — "Ruth's car park permit, Tuesday only" — and a
+              // catalogue that swallowed every one of them would be unusable
+              // within a month.
+              const typed = patch.description.trim();
+              if (typed && !isInCatalogue(catalogue, typed)) {
+                const category = categories.find((c) => c.id === item.categoryId);
+                setOffer({ description: typed, categoryName: category?.name ?? '', mode: item.mode });
+              }
             }
             if (patch.values && patch.mode) {
               await updateValues(db, user.uid, project.id, rowId, patch.mode, patch.values);
@@ -280,6 +327,34 @@ function Budget({ project }: { project: Project }) {
             void updateStatus(db, user.uid, project.id, openItemId, status)
           }
         />
+      ) : null}
+
+      {offer ? (
+        <p style={{ ...hint, marginTop: 16, maxWidth: '70ch' }}>
+          &ldquo;{offer.description}&rdquo; is not in the catalogue.{' '}
+          <button
+            type="button"
+            style={linkBtn}
+            onClick={async () => {
+              const entry = offer;
+              setOffer(null);
+              await addCatalogueEntry(db, user.uid, {
+                description: entry.description,
+                category: entry.categoryName,
+                mode: entry.mode,
+                unit: null,
+              });
+              setMessage(`Added &ldquo;${entry.description}&rdquo; to the catalogue.`);
+            }}
+          >
+            Add it
+          </button>{' '}
+          so it is offered next time, or{' '}
+          <button type="button" style={linkBtn} onClick={() => setOffer(null)}>
+            leave it
+          </button>
+          .
+        </p>
       ) : null}
 
       {message ? (

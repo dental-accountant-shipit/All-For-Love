@@ -27,6 +27,8 @@ import { lumpValues, marginOf, parseClipboardTable, parseMoney, profitOf } from 
 import { formatGBP, formatPercent } from '../domain/money';
 import type { CostMode, CostValues } from '../domain/types';
 import { HEADINGS, cellText, interpret, type GridRow } from '../lib/budget/interpret';
+import DescriptionPicker from './DescriptionPicker';
+import type { CatalogueEntry } from '../domain/catalogue';
 
 export interface BudgetGridProps {
   rows: GridRow[];
@@ -45,6 +47,10 @@ export interface BudgetGridProps {
   onOpenDetails?: (rowId: string) => void;
   /** Add the first (or next) line to a category. */
   onAddLine?: (categoryId: string) => void;
+  /** The line catalogue, offered as you type a description. Optional. */
+  catalogue?: CatalogueEntry[];
+  /** A description was taken from the catalogue, shape and all. */
+  onChooseFromCatalogue?: (rowId: string, entry: CatalogueEntry) => void;
   onUndo?: () => void;
   onRedo?: () => void;
 }
@@ -196,7 +202,33 @@ export default function BudgetGrid(props: BudgetGridProps) {
                 });
               }}
             >
-              {editing ? (
+              {editing && col === 'description' && props.catalogue ? (
+                <DescriptionPicker
+                  value={state.editing ?? ''}
+                  entries={props.catalogue}
+                  currentCategory={row.categoryName}
+                  onChange={(v) => setState(updateEdit(state, v))}
+                  onCommit={(v) => {
+                    commit(index, col, v);
+                    setState({ ...state, editing: null, editingOriginal: null });
+                  }}
+                  onChoose={(entry) => {
+                    // The whole point of the catalogue: the line arrives with
+                    // its shape, not just its words. A per-metre line that
+                    // knows it is per-metre cannot have a total typed into its
+                    // rate column.
+                    props.onChooseFromCatalogue?.(row.id, entry);
+                    setState({ ...state, editing: null, editingOriginal: null });
+                  }}
+                  onCancel={() =>
+                    setState({
+                      ...state,
+                      editing: null,
+                      editingOriginal: null,
+                    })
+                  }
+                />
+              ) : editing ? (
                 <input
                   ref={inputRef}
                   value={state.editing ?? ''}
@@ -213,7 +245,9 @@ export default function BudgetGrid(props: BudgetGridProps) {
                   {row.mode === 'quantity' && col === 'budgetCost' && row.values.quantity ? (
                     <em style={S.hint}>
                       {' '}
-                      {row.values.quantity} × {formatGBP(row.values.unitCost ?? 0)}
+                      {row.values.quantity}
+                      {row.unit ? ` ${row.unit}${row.values.quantity === 1 ? '' : 's'}` : ''} ×{' '}
+                      {formatGBP(row.values.unitCost ?? 0)}
                     </em>
                   ) : null}
                   {row.mode === 'percentage' && col === 'clientPrice' ? (
