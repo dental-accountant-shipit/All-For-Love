@@ -19,11 +19,11 @@ import {
   writeBatch,
   type Firestore,
 } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { connectFunctionsEmulator, getFunctions, httpsCallable } from 'firebase/functions';
 
 import * as paths from './paths';
 import { newAudit, touch } from './projects';
-import { firebaseApp } from './client';
+import { firebaseApp, usingEmulators } from './client';
 import type {
   BudgetVersion,
   BudgetVersionLine,
@@ -162,12 +162,26 @@ export async function abandonDraft(
  * a record rather than a draft, and it has to be written where a client cannot
  * reach it.
  */
+/**
+ * One Functions instance, connected to the emulator when running locally, so
+ * approving a budget works without Blaze. Connecting twice throws, hence the
+ * cache.
+ */
+let functionsInstance: ReturnType<typeof getFunctions> | undefined;
+
+function callableFunctions() {
+  if (functionsInstance) return functionsInstance;
+  functionsInstance = getFunctions(firebaseApp(), 'europe-west2');
+  if (usingEmulators) connectFunctionsEmulator(functionsInstance, '127.0.0.1', 5001);
+  return functionsInstance;
+}
+
 export async function approveVersion(
   projectId: string,
   versionId: string,
   note: string | null,
 ): Promise<{ versionNo: number }> {
-  const functions = getFunctions(firebaseApp(), 'europe-west2');
+  const functions = callableFunctions();
   const call = httpsCallable<
     { projectId: string; versionId: string; note: string | null },
     { versionNo: number }

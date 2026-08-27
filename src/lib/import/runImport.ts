@@ -12,9 +12,14 @@
  * instead of showing "internal error" and leaving somebody to guess.
  */
 
-import { getFunctions, httpsCallable, type Functions } from 'firebase/functions';
+import {
+  connectFunctionsEmulator,
+  getFunctions,
+  httpsCallable,
+  type Functions,
+} from 'firebase/functions';
 
-import { firebaseApp } from '../firestore/client';
+import { firebaseApp, usingEmulators } from '../firestore/client';
 import type { ImportPlan } from '../../domain/import/plan';
 
 const REGION = 'europe-west2';
@@ -40,8 +45,15 @@ export class ImportUnavailableError extends Error {
   }
 }
 
+let instance: Functions | undefined;
+
 function functions(): Functions {
-  return getFunctions(firebaseApp(), REGION);
+  if (instance) return instance;
+  instance = getFunctions(firebaseApp(), REGION);
+  // Locally the functions run in the emulator, free, so the Admin Import and
+  // everything else that needs Blaze works without one.
+  if (usingEmulators) connectFunctionsEmulator(instance, '127.0.0.1', 5001);
+  return instance;
 }
 
 export async function runImport(plan: ImportPlan): Promise<ImportResult> {

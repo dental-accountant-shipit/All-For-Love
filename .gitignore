@@ -17,6 +17,12 @@ src/**/*.js
 *serviceAccount*.json
 *firebase-adminsdk*.json
 
+# Local development: the emulator's database and logs. Yours, this laptop's,
+# and nobody else's business.
+.local-data/
+.local-*.log
+firebase-export-*/
+
 # Firebase
 .firebase/
 firebase-debug.log

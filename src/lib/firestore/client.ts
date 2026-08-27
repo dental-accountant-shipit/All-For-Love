@@ -40,8 +40,20 @@ const CONFIG: Record<(typeof REQUIRED_KEYS)[number], string | undefined> = {
   NEXT_PUBLIC_FIREBASE_APP_ID: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
+/**
+ * Running against the local emulators.
+ *
+ * The emulators do not check the web config at all — any project id will do —
+ * so this also switches off the "you have not configured Firebase" screen.
+ * Somebody running locally has nothing to configure, and telling them to go
+ * and fetch six values from a console they may not even have access to would
+ * be the wrong instruction entirely.
+ */
+export const usingEmulators = process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS === 'true';
+
 /** Which values are still missing. Empty means the app can start. */
 export function missingFirebaseConfig(): string[] {
+  if (usingEmulators) return [];
   return REQUIRED_KEYS.filter((key) => !CONFIG[key]);
 }
 
@@ -51,6 +63,11 @@ export function isFirebaseConfigured(): boolean {
 
 function required(name: (typeof REQUIRED_KEYS)[number]): string {
   const value = CONFIG[name];
+  // The emulators accept anything. A placeholder here is not a fallback that
+  // could reach production — production has no emulator to connect to, so a
+  // build with this flag set would fail on its first read rather than write
+  // somewhere unexpected.
+  if (!value && useEmulators) return 'emulator';
   if (!value) {
     throw new Error(
       `Missing ${name}. Copy .env.example to .env.local and fill it in — ` +
@@ -60,7 +77,7 @@ function required(name: (typeof REQUIRED_KEYS)[number]): string {
   return value;
 }
 
-const useEmulators = process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS === 'true';
+const useEmulators = usingEmulators;
 
 let app: FirebaseApp | undefined;
 let db: Firestore | undefined;
@@ -95,14 +112,24 @@ export function firestore(): Firestore {
   return db;
 }
 
+let authInstance: Auth | undefined;
+
 export function auth(): Auth {
-  const a = getAuth(firebaseApp());
-  if (useEmulators) connectAuthEmulator(a, 'http://127.0.0.1:9099', { disableWarnings: true });
-  return a;
+  if (authInstance) return authInstance;
+  authInstance = getAuth(firebaseApp());
+  // Connecting twice throws, and `auth()` is called from several places on
+  // every render path.
+  if (useEmulators) {
+    connectAuthEmulator(authInstance, 'http://127.0.0.1:9099', { disableWarnings: true });
+  }
+  return authInstance;
 }
 
+let storageInstance: FirebaseStorage | undefined;
+
 export function storage(): FirebaseStorage {
-  const s = getStorage(firebaseApp());
-  if (useEmulators) connectStorageEmulator(s, '127.0.0.1', 9199);
-  return s;
+  if (storageInstance) return storageInstance;
+  storageInstance = getStorage(firebaseApp());
+  if (useEmulators) connectStorageEmulator(storageInstance, '127.0.0.1', 9199);
+  return storageInstance;
 }
