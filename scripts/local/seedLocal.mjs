@@ -47,6 +47,29 @@ async function api(path, body) {
 }
 
 /**
+ * The same API, as the project owner.
+ *
+ * Custom claims are an administrator operation, so they go through the
+ * project-scoped endpoints with the emulator's owner credential rather than
+ * through a user's own token. The first version of this called an
+ * `/emulator/v1/.../:setCustomClaims` path that does not exist, and swallowed
+ * the 404 in a catch — so every local account was created with no role, and the
+ * only symptom was a signed-in user being told there was nothing they could do.
+ */
+async function adminApi(path, body) {
+  const response = await fetch(
+    `http://${HOST}/identitytoolkit.googleapis.com/v1/projects/${PROJECT}/${path}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer owner' },
+      body: JSON.stringify(body),
+    },
+  );
+  const json = await response.json().catch(() => ({}));
+  return { ok: response.ok, json };
+}
+
+/**
  * Wait for Auth to answer.
  *
  * The first run is slow in a way no later run is: firebase-tools is fetched,
@@ -113,14 +136,28 @@ async function seed({ email, role }) {
   // the request. Setting it here means local behaves identically rather than
   // needing a "trust everyone when local" branch, which is the kind of branch
   // that eventually ships.
-  await fetch(
-    `http://${HOST}/emulator/v1/projects/${PROJECT}/accounts/${uid}:setCustomClaims`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ customClaims: JSON.stringify({ role }) }),
-    },
-  ).catch(() => {});
+  const claimed = await adminApi('accounts:update', {
+    localId: uid,
+    customAttributes: JSON.stringify({ role }),
+  });
+
+  if (!claimed.ok) {
+    console.error(
+      `Could not give ${email} the ${role} role: ` +
+        (claimed.json?.error?.message ?? 'no reason given'),
+    );
+    return false;
+  }
+
+  // Read it back. A claim that did not stick produces an account that signs in
+  // perfectly and can then do nothing at all, which reads as a broken
+  // application rather than a broken setup script.
+  const check = await adminApi('accounts:lookup', { localId: [uid] });
+  const stored = check.json?.users?.[0]?.customAttributes ?? '';
+  if (!stored.includes(role)) {
+    console.error(`${email} was created but the ${role} role did not stick.`);
+    return false;
+  }
 
   return true;
 }
