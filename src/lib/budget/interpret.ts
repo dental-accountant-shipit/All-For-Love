@@ -40,6 +40,25 @@ export const HEADINGS: Record<ColumnKey, string> = {
   profit: 'Profit £',
 };
 
+/**
+ * Which cells accept typing.
+ *
+ * This was inline in the grid and wrong in a way that made whole lines
+ * unfillable: every numeric cell on a *quantity* line was treated as derived
+ * and refused clicks. So choosing "Onsite crew — day rate" from the catalogue
+ * — which is the moment the line becomes a quantity line — locked the cost and
+ * price columns, and there was nowhere else in the application to put the
+ * numbers. The engine had always accepted them; only the screen said no.
+ *
+ * Genuinely derived, and only these: profit is always computed, and a
+ * percentage line's client price is a percentage of something else.
+ */
+export function isEditable(row: GridRow, col: ColumnKey): boolean {
+  if (col === 'profit') return false;
+  if (col === 'clientPrice' && row.mode === 'percentage') return false;
+  return true;
+}
+
 export function cellText(row: GridRow, col: ColumnKey): string {
   switch (col) {
     case 'description':

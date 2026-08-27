@@ -364,6 +364,15 @@ function Budget({ project }: { project: Project }) {
         />
       )}
 
+      {!readOnly && categories.length > 0 ? (
+        <p style={{ ...hint, marginTop: 14, maxWidth: '78ch', lineHeight: 1.6 }}>
+          Click any cell and type. In a money cell, <strong>450</strong> is a
+          total and <strong>15 x 450</strong> is fifteen at four hundred and
+          fifty — which keeps the quantity visible instead of burying it in the
+          description. Enter moves down, Tab across.
+        </p>
+      ) : null}
+
       {openItemId && itemById(openItemId) ? (
         <CostItemDrawer
           item={itemById(openItemId)!}

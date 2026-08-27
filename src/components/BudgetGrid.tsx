@@ -26,7 +26,7 @@ import {
 import { lumpValues, marginOf, parseClipboardTable, parseMoney, profitOf } from '../domain/values';
 import { formatGBP, formatPercent } from '../domain/money';
 import type { CostMode, CostValues } from '../domain/types';
-import { HEADINGS, cellText, interpret, type GridRow } from '../lib/budget/interpret';
+import { HEADINGS, cellText, interpret, isEditable, type GridRow } from '../lib/budget/interpret';
 import DescriptionPicker from './DescriptionPicker';
 import type { CatalogueEntry } from '../domain/catalogue';
 
@@ -173,10 +173,7 @@ export default function BudgetGrid(props: BudgetGridProps) {
         {COLUMNS.map((col) => {
           const focused = state.focus.row === index && state.focus.col === col;
           const editing = focused && state.editing !== null;
-          const derived =
-            col === 'profit' ||
-            (row.mode === 'quantity' && col !== 'description') ||
-            (row.mode === 'percentage' && col === 'clientPrice');
+          const derived = !isEditable(row, col);
           const flagged = invalid === `${row.id}:${col}`;
 
           return (
@@ -189,12 +186,14 @@ export default function BudgetGrid(props: BudgetGridProps) {
                 ...(focused ? S.focused : null),
                 ...(flagged ? S.invalid : null),
               }}
+              // One click, not two. Selecting a cell and then having to
+              // discover that a second click — or F2, or just typing — is what
+              // actually opens it is a spreadsheet convention, and this is not
+              // a spreadsheet. Clicking a thing you can type into should let
+              // you type into it.
               onClick={() => {
                 if (!EDITABLE_COLUMNS.includes(col) || derived) return;
-                setState(focusCell(state, index, col));
-              }}
-              onDoubleClick={() => {
-                if (!EDITABLE_COLUMNS.includes(col) || derived) return;
+                if (editing) return;
                 setState({
                   focus: { row: index, col },
                   editing: cellText(row, col),
