@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Attachments on cost items — quotes, supplier confirmations, photographs.
+// Mirrors the Firestore rules: staff read, budget editors write.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() { return request.auth != null; }
+    function role() { return request.auth.token.role; }
+    function isStaff() {
+      return signedIn() && role() in ['director', 'producer', 'finance', 'viewer'];
+    }
+    function canEditBudget() {
+      return signedIn() && role() in ['director', 'producer'];
+    }
+
+    match /projects/{projectId}/costItems/{costItemId}/{fileName} {
+      allow read: if isStaff();
+      allow write: if canEditBudget() && request.resource.size < 25 * 1024 * 1024;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

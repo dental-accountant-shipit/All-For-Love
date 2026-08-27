@@ -1,0 +1,34 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# Secrets and local configuration — never committed
+.env
+.env.local
+.env*.local
+*serviceAccount*.json
+*firebase-adminsdk*.json
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Reference workbooks live in Google Drive, never here
+*.xlsx
+*.xlsm
+*.xls
+
+.DS_Store
+*.tsbuildinfo
+coverage/
+_afl-update4.zip
+_unpack4/
+
+# Local scratch left by the sync tooling — safe to delete
+_afl-*.zip
+_unpack*/
+_stale-git-locks/

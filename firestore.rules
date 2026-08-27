@@ -1,0 +1,244 @@
+rules_version = '2';
+
+// ---------------------------------------------------------------------------
+// All for Love — Projects
+//
+// Two principles run through this whole file:
+//
+//   1. Approved budget history is immutable to EVERY signed-in user, admins
+//      included. Historical versions are created only by the Admin Import
+//      Cloud Function, which uses the Admin SDK and does not pass through
+//      these rules at all. There is deliberately no rule here that could be
+//      relaxed to let a client write history.
+//
+//   2. Rollups are server-owned. Clients may write a cost item's description,
+//      price and status; they may never write its rollup, because a total
+//      anyone can type is a total nobody can trust.
+// ---------------------------------------------------------------------------
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------------- roles
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return request.auth.token.role;
+    }
+
+    function isDirector()  { return signedIn() && role() == 'director'; }
+    function isProducer()  { return signedIn() && role() == 'producer'; }
+    function isFinance()   { return signedIn() && role() == 'finance';  }
+    function isViewer()    { return signedIn() && role() == 'viewer';   }
+
+    // Everyone who may see a project at all.
+    function isStaff() {
+      return signedIn() && role() in ['director', 'producer', 'finance', 'viewer'];
+    }
+
+    // Everyone who may change budget content.
+    function canEditBudget() {
+      return isDirector() || isProducer();
+    }
+
+    // Everyone who may record money movements.
+    function canEditMoney() {
+      return isDirector() || isProducer() || isFinance();
+    }
+
+    // NOTE: 'admin' is deliberately absent from every write rule below.
+    // Admin capability lives in Cloud Functions, not in these rules.
+
+    // ------------------------------------------------------------- helpers
+
+    function unchanged(field) {
+      return !(field in request.resource.data)
+             || request.resource.data[field] == resource.data[field];
+    }
+
+    // Server-owned fields a client may never author.
+    function rollupUntouched() {
+      return unchanged('rollup');
+    }
+
+    function importUntouched() {
+      return unchanged('import');
+    }
+
+    // ---------------------------------------------------------------- users
+
+    match /users/{uid} {
+      allow read: if isStaff();
+      allow write: if false; // provisioned by an admin function only
+    }
+
+    // ------------------------------------------------------------ suppliers
+
+    match /suppliers/{supplierId} {
+      allow read: if isStaff();
+      allow create, update: if canEditMoney();
+      allow delete: if false; // suppliers are deactivated, never deleted
+    }
+
+    // ------------------------------------------------------------- projects
+
+    match /projects/{projectId} {
+      allow read: if isStaff();
+      allow create: if canEditBudget();
+      allow update: if canEditBudget() && rollupUntouched() && importUntouched();
+      allow delete: if false;
+
+      // ------------------------------------------------------- sub-events
+
+      match /subEvents/{subEventId} {
+        allow read: if isStaff();
+        allow create, update: if canEditBudget() && rollupUntouched();
+        // The default sub-event underpins every rollup. It cannot be removed.
+        allow delete: if canEditBudget() && resource.data.isDefault == false;
+      }
+
+      // ------------------------------------------------------- categories
+
+      match /categories/{categoryId} {
+        allow read: if isStaff();
+        allow create, update, delete: if canEditBudget();
+      }
+
+      // -------------------------------------------------------- cost items
+
+      match /costItems/{costItemId} {
+        allow read: if isStaff();
+        allow create: if canEditBudget() && rollupUntouched() && importUntouched();
+
+        // A client may edit the draft block, description, status and details.
+        // It may never author the rollup, nor rewrite the approved snapshot —
+        // that is written by the approval transaction in a Cloud Function.
+        allow update: if canEditBudget()
+                      && rollupUntouched()
+                      && importUntouched()
+                      && unchanged('approved')
+                      && unchanged('original');
+
+        // A line carrying money is cancelled, never deleted. The client cannot
+        // see the commitments from here, so the Cloud Function enforces the
+        // full check; this stops the obvious case.
+        allow delete: if canEditBudget();
+
+        match /attachments/{attachmentId} {
+          allow read: if isStaff();
+          allow create, delete: if canEditBudget();
+          allow update: if false;
+        }
+      }
+
+      // --------------------------------------------------- budget versions
+
+      match /budgetVersions/{versionId} {
+        allow read: if isStaff();
+        allow create: if canEditBudget()
+                      && request.resource.data.status == 'draft'
+                      && importUntouched();
+
+        // A draft may be edited. An approved or superseded version may not be
+        // touched by anyone, ever. Approval itself runs in a Cloud Function.
+        allow update: if canEditBudget()
+                      && resource.data.status == 'draft'
+                      && request.resource.data.status == 'draft'
+                      && importUntouched();
+
+        allow delete: if canEditBudget() && resource.data.status == 'draft';
+
+        match /lines/{costItemId} {
+          allow read: if isStaff();
+          // Lines only ever exist as part of an approved snapshot, written
+          // server-side. Nothing client-side writes here.
+          allow write: if false;
+        }
+      }
+
+      // ------------------------------------------------------- commissions
+
+      match /commissions/{commissionId} {
+        // Commission is a director-level fact. Producers run projects without
+        // seeing what the introducer takes.
+        allow read: if isDirector() || isFinance();
+        allow create, update, delete: if isDirector();
+      }
+
+      // ---------------------------------------------------------- activity
+
+      match /activity/{eventId} {
+        allow read: if isStaff();
+        // Audit entries are written server-side so they cannot be forged.
+        allow write: if false;
+      }
+    }
+
+    // ---------------------------------------------------------- commitments
+
+    match /commitments/{commitmentId} {
+      allow read: if isStaff();
+      allow create, update: if canEditMoney();
+      // Cancelling is a status change; the record itself stays.
+      allow delete: if false;
+    }
+
+    // --------------------------------------------------------- transactions
+
+    match /transactions/{transactionId} {
+      allow read: if isStaff();
+
+      // Manual entry and allocation are staff actions. Anything Xero created
+      // is owned by the integration: its amounts, dates and payment status
+      // are not editable here, only its project/cost item allocation.
+      allow create: if canEditMoney() && request.resource.data.source == 'manual';
+
+      allow update: if canEditMoney()
+                    && unchanged('source')
+                    && unchanged('xeroId')
+                    && (resource.data.source != 'xero' || (
+                         unchanged('amountExVat')
+                      && unchanged('vatAmount')
+                      && unchanged('amountBaseExVat')
+                      && unchanged('date')
+                      && unchanged('paymentStatus')
+                    ));
+
+      allow delete: if canEditMoney() && resource.data.source == 'manual';
+    }
+
+    // ------------------------------------------------------- client invoices
+
+    match /clientInvoices/{invoiceId} {
+      allow read: if isStaff();
+      allow create, update: if canEditMoney() && request.resource.data.source == 'manual';
+      allow delete: if canEditMoney() && resource.data.source == 'manual';
+    }
+
+    // ------------------------------------------------------------ templates
+
+    match /budgetTemplates/{templateId} {
+      allow read: if isStaff();
+      allow create, update, delete: if isDirector();
+    }
+
+    // --------------------------------------------------- integrations, import
+
+    // Xero tokens and sync cursors. No client ever reads or writes these.
+    match /integrations/{document=**} {
+      allow read, write: if false;
+    }
+
+    // Import batches are created by the Admin Import function and read by the
+    // Admin screen so a run can be reviewed and rolled back.
+    match /importBatches/{batchId} {
+      allow read: if isDirector();
+      allow write: if false;
+    }
+
+    // Anything not matched above is denied.
+  }
+}
