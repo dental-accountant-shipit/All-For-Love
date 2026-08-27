@@ -151,7 +151,7 @@ fi
 mkdir -p .local-data
 
 say "Starting the local database…"
-note "First time, this downloads the emulators. Give it a minute."
+note "The first run downloads the database itself — a few minutes. After that it is seconds."
 
 npx --yes firebase-tools@latest emulators:start \
   --only firestore,auth,functions,storage \

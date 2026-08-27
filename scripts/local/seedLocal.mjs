@@ -33,7 +33,23 @@ async function api(path, body) {
   return { ok: response.ok, json };
 }
 
-async function waitForEmulator(seconds = 60) {
+/**
+ * Wait for Auth to answer.
+ *
+ * The first run is slow in a way no later run is: firebase-tools is fetched,
+ * then the Firestore and Storage jars, then the emulator UI, and only then does
+ * Auth bind its port. On a cold machine with an ordinary connection that is
+ * comfortably several minutes. The original minute here was an educated guess
+ * and the guess was wrong, which produced the worst possible outcome — a
+ * confident "never came up" while the download was still in progress.
+ *
+ * So: wait long enough for a first run, and say what is happening while waiting
+ * rather than sitting silent.
+ */
+async function waitForEmulator(seconds = 600) {
+  const started = Date.now();
+  let announced = false;
+
   for (let i = 0; i < seconds * 2; i++) {
     try {
       const response = await fetch(`http://${HOST}/`, { signal: AbortSignal.timeout(1000) });
@@ -41,6 +57,15 @@ async function waitForEmulator(seconds = 60) {
     } catch {
       /* not up yet */
     }
+
+    if (!announced && Date.now() - started > 20_000) {
+      announced = true;
+      console.log(
+        '\n  Still starting the local database. The first run downloads it,\n' +
+          '  which can take a few minutes. Nothing is wrong.\n',
+      );
+    }
+
     await new Promise((r) => setTimeout(r, 500));
   }
   return false;
@@ -48,7 +73,12 @@ async function waitForEmulator(seconds = 60) {
 
 async function main() {
   if (!(await waitForEmulator())) {
-    console.error('The Auth emulator never came up. Nothing seeded.');
+    console.error(
+      '\n  The local database did not start.\n' +
+        '\n  What went wrong is written down in  .local-emulators.log  in this\n' +
+        '  folder — the last few lines of it are the useful part. Closing this\n' +
+        '  window and double-clicking Start again is worth trying first.\n',
+    );
     process.exit(0); // Not fatal — the app still runs, you just cannot sign in.
   }
 
