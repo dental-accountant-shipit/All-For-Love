@@ -19,6 +19,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { searchCatalogue, type CatalogueEntry } from '../domain/catalogue';
 import { formatGBP } from '../domain/money';
 import { buildNewLine, readLine, type NewLine } from '../lib/budget/newLine';
+import { colour, radius, type as typeToken } from '../design/tokens';
+import { buttonPrimary, buttonSecondary, buttonQuiet, input as inputStyle } from '../design/ui';
 
 export type { NewLine } from '../lib/budget/newLine';
 
@@ -87,7 +89,9 @@ export default function AddLineForm({
   };
 
   return (
-    <div style={S.panel}>
+    // Everything typed in here is this form's business, not the grid's. See the
+    // guard in BudgetGrid's onKeyDown.
+    <div style={S.panel} data-afl-own-keys>
       <p style={S.title}>New line in {categoryName}</p>
 
       <div style={S.row}>
@@ -199,7 +203,10 @@ export default function AddLineForm({
         ) : null}
         <strong>{budgetTotal === null ? 'no budget cost' : formatGBP(budgetTotal)}</strong> cost ·{' '}
         <strong>{formatGBP(clientTotal)}</strong> to the client ·{' '}
-        <strong>{profit === null ? '—' : formatGBP(profit)}</strong> profit
+        <strong style={profit !== null && profit < 0 ? { color: colour.signature } : undefined}>
+          {profit === null ? '—' : formatGBP(profit)}
+        </strong>{' '}
+        profit
       </p>
 
       <div style={S.actions}>
@@ -220,34 +227,35 @@ export default function AddLineForm({
 
 const S: Record<string, React.CSSProperties> = {
   panel: {
-    border: '1px solid #e4dfd7',
-    borderRadius: 6,
-    background: '#fbfaf8',
-    padding: '14px 16px 12px',
-    margin: '6px 0 14px',
-    fontFamily: 'system-ui, sans-serif',
+    border: `1px solid ${colour.rule}`,
+    borderLeft: `3px solid ${colour.ink}`,
+    borderRadius: radius.base,
+    background: colour.ground,
+    padding: '16px 18px 14px',
+    margin: '8px 0 16px',
   },
   title: {
-    margin: '0 0 12px',
+    margin: '0 0 14px',
     fontSize: 11,
-    letterSpacing: '0.08em',
+    fontWeight: 600,
+    letterSpacing: typeToken.trackingLabel,
     textTransform: 'uppercase',
-    color: '#666',
+    color: colour.muted,
   },
   row: { display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' },
   field: { display: 'block' },
-  label: { display: 'block', fontSize: 11, color: '#666', marginBottom: 4 },
-  input: {
-    width: '100%',
-    boxSizing: 'border-box',
-    font: 'inherit',
-    fontSize: 14,
-    padding: '8px 9px',
-    border: '1px solid #ddd7cd',
-    borderRadius: 4,
-    background: '#fff',
+  label: {
+    display: 'block',
+    fontSize: 10,
+    fontWeight: 600,
+    letterSpacing: typeToken.trackingLabel,
+    textTransform: 'uppercase',
+    color: colour.muted,
+    marginBottom: 5,
   },
-  wrong: { borderColor: '#c10001' },
+  input: inputStyle,
+  wrong: { borderColor: colour.signature },
+
   suggestions: {
     position: 'absolute',
     zIndex: 5,
@@ -257,11 +265,11 @@ const S: Record<string, React.CSSProperties> = {
     margin: '4px 0 0',
     padding: 0,
     listStyle: 'none',
-    background: '#fff',
-    border: '1px solid #ddd7cd',
-    borderRadius: 4,
-    boxShadow: '0 6px 18px rgba(0,0,0,0.08)',
-    maxHeight: 240,
+    background: colour.paper,
+    border: `1px solid ${colour.rule}`,
+    borderRadius: radius.base,
+    boxShadow: '0 8px 22px rgba(0,0,0,0.10)',
+    maxHeight: 250,
     overflowY: 'auto',
   },
   suggestion: {
@@ -269,7 +277,7 @@ const S: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     gap: 12,
     width: '100%',
-    padding: '8px 10px',
+    padding: '9px 11px',
     font: 'inherit',
     fontSize: 13,
     textAlign: 'left',
@@ -277,36 +285,21 @@ const S: Record<string, React.CSSProperties> = {
     border: 'none',
     cursor: 'pointer',
   },
-  suggestionMeta: { color: '#999', whiteSpace: 'nowrap' },
-  sum: { margin: '12px 0 0', fontSize: 13, color: '#555', fontVariantNumeric: 'tabular-nums' },
-  actions: { display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginTop: 12 },
-  primary: {
-    font: 'inherit',
+  suggestionMeta: { color: colour.muted, whiteSpace: 'nowrap' },
+
+  // The arithmetic, said out loud. A rate and a total cannot be confused when
+  // the product is on the screen beside them.
+  sum: {
+    margin: '14px 0 0',
+    paddingTop: 12,
+    borderTop: `1px solid ${colour.rule}`,
     fontSize: 13,
-    padding: '8px 14px',
-    background: '#111',
-    color: '#fff',
-    border: '1px solid #111',
-    borderRadius: 4,
-    cursor: 'pointer',
+    color: colour.muted,
+    fontVariantNumeric: 'tabular-nums',
   },
-  secondary: {
-    font: 'inherit',
-    fontSize: 13,
-    padding: '8px 14px',
-    background: '#fff',
-    border: '1px solid #ccc5b9',
-    borderRadius: 4,
-    cursor: 'pointer',
-  },
-  quiet: {
-    font: 'inherit',
-    fontSize: 13,
-    padding: '8px 4px',
-    background: 'none',
-    border: 'none',
-    color: '#777',
-    cursor: 'pointer',
-  },
-  tip: { fontSize: 12, color: '#999', marginLeft: 'auto' },
+  actions: { display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginTop: 14 },
+  primary: buttonPrimary,
+  secondary: buttonSecondary,
+  quiet: buttonQuiet,
+  tip: { fontSize: 12, color: colour.muted, marginLeft: 'auto' },
 };

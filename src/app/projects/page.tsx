@@ -8,6 +8,7 @@ import { firestore } from '../../lib/firestore/client';
 import { createProject, watchProjects } from '../../lib/firestore/projects';
 import { formatGBP, formatPercent } from '../../domain/money';
 import type { Project } from '../../domain/types';
+import { colour } from '../../design/tokens';
 
 export default function ProjectsPage() {
   const { user, can } = useAuth();
@@ -19,7 +20,7 @@ export default function ProjectsPage() {
     return watchProjects(firestore(), setProjects);
   }, [user]);
 
-  if (!projects) return <p style={{ color: '#666' }}>Loading projects…</p>;
+  if (!projects) return <p style={{ color: colour.muted }}>Loading projects…</p>;
 
   return (
     <>
@@ -35,7 +36,7 @@ export default function ProjectsPage() {
       {creating ? <NewProjectForm onDone={() => setCreating(false)} /> : null}
 
       {projects.length === 0 ? (
-        <p style={{ color: '#666', maxWidth: '56ch' }}>
+        <p style={{ color: colour.muted, maxWidth: '56ch' }}>
           No projects yet.{' '}
           {can('createProject')
             ? 'Create one to start a budget — it opens straight into the grid.'
@@ -160,7 +161,7 @@ function NewProjectForm({ onDone }: { onDone: () => void }) {
         </p>
       )}
 
-      {error ? <p style={{ color: '#c10001', fontSize: 13 }}>{error}</p> : null}
+      {error ? <p style={{ color: colour.signature, fontSize: 13 }}>{error}</p> : null}
 
       <button type="submit" disabled={busy} style={{ ...btn, marginTop: 12 }}>
         {busy ? 'Creating…' : 'Create project'}
@@ -207,16 +208,16 @@ const th: React.CSSProperties = {
   fontSize: 11,
   letterSpacing: '0.08em',
   textTransform: 'uppercase',
-  color: '#777',
+  color: colour.muted,
   padding: '8px',
-  borderBottom: '1px solid #999',
+  borderBottom: `1px solid ${colour.ruleStrong}`,
   whiteSpace: 'nowrap',
 };
-const td: React.CSSProperties = { padding: '8px', borderBottom: '1px solid #eee' };
+const td: React.CSSProperties = { padding: '8px', borderBottom: `1px solid ${colour.rule}` };
 const num: React.CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
-const hint: React.CSSProperties = { fontSize: 12, color: '#777' };
+const hint: React.CSSProperties = { fontSize: 12, color: colour.muted };
 const panel: React.CSSProperties = {
-  border: '1px solid #e5e5e5',
+  border: `1px solid ${colour.rule}`,
   padding: 16,
   marginBottom: 24,
 };
@@ -226,9 +227,9 @@ const input: React.CSSProperties = {
   fontSize: 14,
   padding: '6px 8px',
   marginTop: 4,
-  border: '1px solid #ccc',
+  border: `1px solid ${colour.rule}`,
   borderRadius: 4,
-  color: '#111',
+  color: colour.ink,
 };
 const btn: React.CSSProperties = {
   font: 'inherit',
@@ -237,8 +238,8 @@ const btn: React.CSSProperties = {
   letterSpacing: '0.1em',
   fontWeight: 600,
   padding: '8px 14px',
-  background: '#000',
-  color: '#fff',
+  background: colour.ink,
+  color: colour.paper,
   border: 'none',
   borderRadius: 2,
   cursor: 'pointer',

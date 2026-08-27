@@ -14,6 +14,7 @@ import {
 import { watchSupplierSpend } from '../../lib/firestore/money';
 import { formatGBP } from '../../domain/money';
 import type { Supplier, Transaction } from '../../domain/types';
+import { colour } from '../../design/tokens';
 
 export default function SuppliersPage() {
   const { user, can } = useAuth();
@@ -37,7 +38,7 @@ export default function SuppliersPage() {
   }, [db, user, can]);
 
   if (!user) return null;
-  if (!suppliers) return <p style={{ color: '#666' }}>Loading suppliers…</p>;
+  if (!suppliers) return <p style={{ color: colour.muted }}>Loading suppliers…</p>;
 
   const editable = can('manageSuppliers');
 
@@ -92,7 +93,7 @@ export default function SuppliersPage() {
             because empty and &ldquo;not registered&rdquo; mean different things when
             these records are reconciled against Xero.
           </p>
-          <button type="submit" style={{ ...btn, background: '#000', color: '#fff', border: 'none', marginTop: 8 }}>
+          <button type="submit" style={{ ...btn, background: colour.ink, color: colour.paper, border: 'none', marginTop: 8 }}>
             Add supplier
           </button>
         </form>
@@ -273,22 +274,22 @@ const th: React.CSSProperties = {
   fontSize: 11,
   letterSpacing: '0.08em',
   textTransform: 'uppercase',
-  color: '#777',
+  color: colour.muted,
   padding: 8,
-  borderBottom: '1px solid #999',
+  borderBottom: `1px solid ${colour.ruleStrong}`,
 };
-const td: React.CSSProperties = { padding: '6px 8px', borderBottom: '1px solid #eee' };
-const hint: React.CSSProperties = { fontSize: 12, color: '#777' };
-const panel: React.CSSProperties = { border: '1px solid #e5e5e5', padding: 16, marginBottom: 24 };
+const td: React.CSSProperties = { padding: '6px 8px', borderBottom: `1px solid ${colour.rule}` };
+const hint: React.CSSProperties = { fontSize: 12, color: colour.muted };
+const panel: React.CSSProperties = { border: `1px solid ${colour.rule}`, padding: 16, marginBottom: 24 };
 const input: React.CSSProperties = {
   display: 'block',
   font: 'inherit',
   fontSize: 14,
   padding: '6px 8px',
   marginTop: 4,
-  border: '1px solid #ccc',
+  border: `1px solid ${colour.rule}`,
   borderRadius: 4,
-  color: '#111',
+  color: colour.ink,
 };
 const btn: React.CSSProperties = {
   font: 'inherit',
@@ -298,8 +299,8 @@ const btn: React.CSSProperties = {
   fontWeight: 600,
   padding: '8px 14px',
   background: 'transparent',
-  color: '#111',
-  border: '1px solid #ccc',
+  color: colour.ink,
+  border: `1px solid ${colour.rule}`,
   borderRadius: 2,
   cursor: 'pointer',
 };
@@ -308,7 +309,7 @@ const link: React.CSSProperties = {
   border: 'none',
   padding: 0,
   font: 'inherit',
-  color: '#c10001',
+  color: colour.signature,
   cursor: 'pointer',
   textDecoration: 'underline',
 };
@@ -318,8 +319,8 @@ const drawer: React.CSSProperties = {
   right: 0,
   bottom: 0,
   width: 'min(460px, 100vw)',
-  background: '#fff',
-  borderLeft: '1px solid #ccc',
+  background: colour.paper,
+  borderLeft: `1px solid ${colour.rule}`,
   boxShadow: '-8px 0 24px rgba(0,0,0,.06)',
   padding: 20,
   overflowY: 'auto',
@@ -334,5 +335,5 @@ const close: React.CSSProperties = {
   fontSize: 22,
   lineHeight: 1,
   cursor: 'pointer',
-  color: '#666',
+  color: colour.muted,
 };

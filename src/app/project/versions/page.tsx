@@ -19,6 +19,7 @@ import {
 } from '../../../lib/firestore/versions';
 import { formatGBP } from '../../../domain/money';
 import type { BudgetVersion, CostItem, Project } from '../../../domain/types';
+import { colour } from '../../../design/tokens';
 
 export default function VersionsPage() {
   return <ProjectScreen>{(project) => <Versions project={project} />}</ProjectScreen>;
@@ -52,7 +53,7 @@ function Versions({ project }: { project: Project }) {
     };
   }, [db, project.id, project.openDraftVersionId, project.currentApprovedVersionId, items]);
 
-  if (!versions || !user) return <p style={{ color: '#666' }}>Loading versions…</p>;
+  if (!versions || !user) return <p style={{ color: colour.muted }}>Loading versions…</p>;
 
   const draft = versions.find((v) => v.status === 'draft') ?? null;
 
@@ -126,7 +127,7 @@ function Versions({ project }: { project: Project }) {
         {draft && can('approveBudget') ? (
           <button
             type="button"
-            style={{ ...btn, background: '#000', color: '#fff', border: 'none' }}
+            style={{ ...btn, background: colour.ink, color: colour.paper, border: 'none' }}
             disabled={busy}
             onClick={() =>
               guard(async () => {
@@ -323,18 +324,18 @@ const th: React.CSSProperties = {
   fontSize: 11,
   letterSpacing: '0.08em',
   textTransform: 'uppercase',
-  color: '#777',
+  color: colour.muted,
   padding: 8,
-  borderBottom: '1px solid #999',
+  borderBottom: `1px solid ${colour.ruleStrong}`,
 };
-const td: React.CSSProperties = { padding: '6px 8px', borderBottom: '1px solid #eee' };
+const td: React.CSSProperties = { padding: '6px 8px', borderBottom: `1px solid ${colour.rule}` };
 const num: React.CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
-const hint: React.CSSProperties = { fontSize: 12, color: '#777' };
-const imported: React.CSSProperties = { fontSize: 11, color: '#c10001', fontStyle: 'normal' };
+const hint: React.CSSProperties = { fontSize: 12, color: colour.muted };
+const imported: React.CSSProperties = { fontSize: 11, color: colour.signature, fontStyle: 'normal' };
 const warn: React.CSSProperties = {
   fontSize: 13,
-  color: '#111',
-  background: '#FDD1D2',
+  color: colour.ink,
+  background: colour.blush,
   padding: '10px 12px',
   maxWidth: '68ch',
 };
@@ -347,8 +348,8 @@ const btn: React.CSSProperties = {
   fontWeight: 600,
   padding: '6px 12px',
   background: 'transparent',
-  color: '#111',
-  border: '1px solid #ccc',
+  color: colour.ink,
+  border: `1px solid ${colour.rule}`,
   borderRadius: 2,
   cursor: 'pointer',
 };

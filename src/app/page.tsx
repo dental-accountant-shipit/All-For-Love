@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
 import { useAuth } from '../lib/auth/AuthProvider';
+import { colour } from '../design/tokens';
 
 export default function Home() {
   const { user } = useAuth();
@@ -16,7 +17,7 @@ export default function Home() {
 
   return (
     <main style={{ maxWidth: 560 }}>
-      <p style={{ color: '#555' }}>
+      <p style={{ color: colour.muted }}>
         <Link href="/projects">Projects</Link> ·{' '}
         <Link href="/budget-demo">Budget grid demo (in memory, no sign-in)</Link>
       </p>

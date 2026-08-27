@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRoutePath } from '../lib/useRoutePath';
 
 import type { Project } from '../domain/types';
+import { colour } from '../design/tokens';
 
 export default function ProjectNav({ project }: { project: Project }) {
   const pathname = useRoutePath();
@@ -17,7 +18,7 @@ export default function ProjectNav({ project }: { project: Project }) {
     <header style={{ marginBottom: 24 }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
         <h1 style={{ fontWeight: 400, fontSize: 22, margin: 0 }}>{project.name}</h1>
-        <span style={{ fontSize: 13, color: '#777' }}>
+        <span style={{ fontSize: 13, color: colour.muted }}>
           {project.clientName}
           {project.eventDate ? ` · ${project.eventDate.slice(0, 10)}` : ''}
           {project.venue ? ` · ${project.venue}` : ''}

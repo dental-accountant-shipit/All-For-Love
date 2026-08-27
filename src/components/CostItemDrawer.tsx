@@ -38,6 +38,7 @@ import type {
   Supplier,
   Transaction,
 } from '../domain/types';
+import { colour } from '../design/tokens';
 
 const STATUSES: CostItemStatus[] = [
   'planned',
@@ -689,7 +690,7 @@ function MoneyForm({
       {problem ? <p style={S.error}>{problem}</p> : null}
 
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-        <button type="submit" style={{ ...S.button, background: '#000', color: '#fff', border: 'none' }}>
+        <button type="submit" style={{ ...S.button, background: colour.ink, color: colour.paper, border: 'none' }}>
           Save
         </button>
         <button type="button" style={S.button} onClick={() => setOpen(false)}>
@@ -714,7 +715,7 @@ function Figure({
   return (
     <div>
       <dt style={S.figureLabel}>{label}</dt>
-      <dd style={{ ...S.figureValue, color: muted ? '#999' : '#111' }}>
+      <dd style={{ ...S.figureValue, color: muted ? colour.ruleStrong : colour.ink }}>
         {value}
         {note ? <em style={{ ...S.hint, display: 'block', fontStyle: 'normal' }}>{note}</em> : null}
       </dd>
@@ -785,8 +786,8 @@ const S: Record<string, React.CSSProperties> = {
     right: 0,
     bottom: 0,
     width: 'min(560px, 100vw)',
-    background: '#fff',
-    borderLeft: '1px solid #ccc',
+    background: colour.paper,
+    borderLeft: `1px solid ${colour.rule}`,
     boxShadow: '-8px 0 24px rgba(0,0,0,.06)',
     padding: 20,
     overflowY: 'auto',
@@ -802,7 +803,7 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 22,
     lineHeight: 1,
     cursor: 'pointer',
-    color: '#666',
+    color: colour.muted,
   },
   figures: {
     display: 'grid',
@@ -810,13 +811,13 @@ const S: Record<string, React.CSSProperties> = {
     gap: 16,
     margin: '0 0 12px',
     paddingBottom: 14,
-    borderBottom: '1px solid #e5e5e5',
+    borderBottom: `1px solid ${colour.rule}`,
   },
   figureLabel: {
     fontSize: 10,
     letterSpacing: '0.1em',
     textTransform: 'uppercase',
-    color: '#777',
+    color: colour.muted,
   },
   figureValue: { margin: '3px 0 0', fontSize: 16, fontVariantNumeric: 'tabular-nums' },
   section: { marginBottom: 22 },
@@ -834,24 +835,24 @@ const S: Record<string, React.CSSProperties> = {
     fontVariantNumeric: 'tabular-nums',
     marginBottom: 8,
   },
-  td: { padding: '5px 6px', borderBottom: '1px solid #eee', verticalAlign: 'top' },
-  num: { padding: '5px 6px', borderBottom: '1px solid #eee', textAlign: 'right', whiteSpace: 'nowrap' },
+  td: { padding: '5px 6px', borderBottom: `1px solid ${colour.rule}`, verticalAlign: 'top' },
+  num: { padding: '5px 6px', borderBottom: `1px solid ${colour.rule}`, textAlign: 'right', whiteSpace: 'nowrap' },
   fields: { display: 'flex', flexWrap: 'wrap', gap: 12 },
-  label: { fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#777' },
+  label: { fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: colour.muted },
   input: {
     display: 'block',
     font: 'inherit',
     fontSize: 14,
     padding: '5px 7px',
     marginTop: 3,
-    border: '1px solid #ccc',
+    border: `1px solid ${colour.rule}`,
     borderRadius: 4,
-    color: '#111',
+    color: colour.ink,
     minWidth: 120,
   },
   select: { display: 'block', font: 'inherit', fontSize: 14, marginTop: 3, padding: '5px 6px' },
   selectSmall: { font: 'inherit', fontSize: 12 },
-  form: { border: '1px solid #e5e5e5', padding: 12, marginTop: 8 },
+  form: { border: `1px solid ${colour.rule}`, padding: 12, marginTop: 8 },
   button: {
     font: 'inherit',
     fontSize: 11,
@@ -860,10 +861,10 @@ const S: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     padding: '6px 12px',
     background: 'transparent',
-    border: '1px solid #ccc',
+    border: `1px solid ${colour.rule}`,
     borderRadius: 2,
     cursor: 'pointer',
-    color: '#111',
+    color: colour.ink,
   },
   link: {
     background: 'none',
@@ -871,14 +872,14 @@ const S: Record<string, React.CSSProperties> = {
     padding: 0,
     font: 'inherit',
     fontSize: 12,
-    color: '#c10001',
+    color: colour.signature,
     cursor: 'pointer',
     textDecoration: 'underline',
   },
-  hint: { fontSize: 11, color: '#777', marginTop: 4 },
-  error: { fontSize: 13, color: '#c10001' },
-  warn: { fontSize: 12, color: '#111', background: '#FDD1D2', padding: '8px 10px' },
-  over: { fontSize: 13, color: '#c10001', fontWeight: 600 },
+  hint: { fontSize: 11, color: colour.muted, marginTop: 4 },
+  error: { fontSize: 13, color: colour.signature },
+  warn: { fontSize: 12, color: colour.ink, background: colour.blush, padding: '8px 10px' },
+  over: { fontSize: 13, color: colour.signature, fontWeight: 600 },
 };
 
 void toPence;

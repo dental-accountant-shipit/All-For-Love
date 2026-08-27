@@ -49,6 +49,7 @@ import type {
   SubEvent,
   Transaction,
 } from '../../../domain/types';
+import { colour } from '../../../design/tokens';
 
 export default function BudgetPage() {
   return <ProjectScreen>{(project) => <Budget project={project} />}</ProjectScreen>;
@@ -129,7 +130,7 @@ function Budget({ project }: { project: Project }) {
   // as well as the names, so a category toggled out of the base re-renders the
   // grid with the new figure immediately.
 
-  if (!items) return <p style={{ color: '#666' }}>Loading budget…</p>;
+  if (!items) return <p style={{ color: colour.muted }}>Loading budget…</p>;
   if (!user) return null;
 
   const readOnly = !can('editBudget');
@@ -469,7 +470,7 @@ const bar: React.CSSProperties = {
   alignItems: 'baseline',
   marginBottom: 16,
 };
-const hint: React.CSSProperties = { fontSize: 12, color: '#777' };
+const hint: React.CSSProperties = { fontSize: 12, color: colour.muted };
 const select: React.CSSProperties = { font: 'inherit', fontSize: 13, padding: '4px 6px' };
 const btn: React.CSSProperties = {
   font: 'inherit',
@@ -479,8 +480,8 @@ const btn: React.CSSProperties = {
   fontWeight: 600,
   padding: '6px 12px',
   background: 'transparent',
-  color: '#111',
-  border: '1px solid #ccc',
+  color: colour.ink,
+  border: `1px solid ${colour.rule}`,
   borderRadius: 2,
   cursor: 'pointer',
 };
@@ -489,7 +490,7 @@ const linkBtn: React.CSSProperties = {
   border: 'none',
   padding: 0,
   font: 'inherit',
-  color: '#c10001',
+  color: colour.signature,
   cursor: 'pointer',
   textDecoration: 'underline',
 };

@@ -27,6 +27,7 @@ import {
   type PlanSection,
 } from '../../../domain/import/plan';
 import { formatGBP } from '../../../domain/money';
+import { colour } from '../../../design/tokens';
 
 export default function AdminImportPage() {
   const { user, can } = useAuth();
@@ -298,7 +299,7 @@ export default function AdminImportPage() {
           <Warnings plan={plan} />
 
           {problems.length > 0 ? (
-            <ul style={{ ...prose, color: '#c10001' }}>
+            <ul style={{ ...prose, color: colour.signature }}>
               {problems.map((p) => (
                 <li key={p.field + p.message}>{p.message}</li>
               ))}
@@ -317,7 +318,7 @@ export default function AdminImportPage() {
       ) : null}
 
       {error ? (
-        <p style={{ ...prose, color: '#c10001', maxWidth: '62ch' }}>{error}</p>
+        <p style={{ ...prose, color: colour.signature, maxWidth: '62ch' }}>{error}</p>
       ) : null}
     </>
   );
@@ -337,7 +338,7 @@ function Figures({ plan }: { plan: ImportPlan }) {
         <Row label="Profit" value={t.agreedProfit} strong />
         <tr>
           <td style={td}>Budget cost</td>
-          <td style={{ ...td, ...numeric, color: '#777' }}>Not recorded</td>
+          <td style={{ ...td, ...numeric, color: colour.muted }}>Not recorded</td>
         </tr>
       </tbody>
     </table>
@@ -438,7 +439,7 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
   return (
     <section style={{ marginBottom: 36 }}>
       <h2 style={h2}>
-        <span style={{ color: '#c10001', marginRight: 10 }}>{n}</span>
+        <span style={{ color: colour.signature, marginRight: 10 }}>{n}</span>
         {title}
       </h2>
       {children}
@@ -452,13 +453,13 @@ const h1: React.CSSProperties = { fontWeight: 400, fontSize: 22, marginBottom: 8
 const h2: React.CSSProperties = { fontWeight: 400, fontSize: 16, margin: '0 0 12px' };
 const h3: React.CSSProperties = { fontWeight: 600, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 10px' };
 const prose: React.CSSProperties = { fontSize: 14, lineHeight: 1.55, margin: '0 0 10px' };
-const hint: React.CSSProperties = { fontSize: 12, color: '#777' };
+const hint: React.CSSProperties = { fontSize: 12, color: colour.muted };
 const field: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 };
 const input: React.CSSProperties = {
   font: 'inherit',
   fontSize: 13,
   padding: '5px 7px',
-  border: '1px solid #ccc',
+  border: `1px solid ${colour.rule}`,
   borderRadius: 2,
 };
 const table: React.CSSProperties = { borderCollapse: 'collapse', fontSize: 13, width: '100%' };
@@ -468,20 +469,20 @@ const th: React.CSSProperties = {
   fontSize: 11,
   textTransform: 'uppercase',
   letterSpacing: '0.08em',
-  color: '#777',
+  color: colour.muted,
   padding: '4px 8px 8px 0',
-  borderBottom: '1px solid #e5e5e5',
+  borderBottom: `1px solid ${colour.rule}`,
 };
-const td: React.CSSProperties = { padding: '5px 8px 5px 0', borderBottom: '1px solid #f0f0f0' };
+const td: React.CSSProperties = { padding: '5px 8px 5px 0', borderBottom: `1px solid ${colour.rule}` };
 const numeric: React.CSSProperties = {
   textAlign: 'right',
   fontVariantNumeric: 'tabular-nums',
 };
 const panel: React.CSSProperties = {
-  border: '1px solid #e5e5e5',
+  border: `1px solid ${colour.rule}`,
   borderRadius: 2,
   padding: '16px 18px',
-  background: '#fbfbfb',
+  background: colour.ground,
 };
 const primaryBtn: React.CSSProperties = {
   font: 'inherit',
@@ -490,9 +491,9 @@ const primaryBtn: React.CSSProperties = {
   letterSpacing: '0.1em',
   fontWeight: 600,
   padding: '10px 20px',
-  background: '#111',
-  color: '#fff',
-  border: '1px solid #111',
+  background: colour.ink,
+  color: colour.paper,
+  border: `1px solid ${colour.ink}`,
   borderRadius: 2,
   cursor: 'pointer',
 };
@@ -502,8 +503,8 @@ const linkBtn: React.CSSProperties = {
   padding: 0,
   font: 'inherit',
   fontSize: 13,
-  color: '#c10001',
+  color: colour.signature,
   cursor: 'pointer',
   textDecoration: 'underline',
 };
-const link: React.CSSProperties = { color: '#c10001' };
+const link: React.CSSProperties = { color: colour.signature };

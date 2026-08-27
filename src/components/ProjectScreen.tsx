@@ -14,6 +14,7 @@ import { firestore } from '../lib/firestore/client';
 import { watchProject } from '../lib/firestore/projects';
 import ProjectNav from './ProjectNav';
 import type { Project } from '../domain/types';
+import { colour } from '../design/tokens';
 
 function Inner({ children }: { children: (project: Project) => ReactNode }) {
   const { user } = useAuth();
@@ -25,9 +26,9 @@ function Inner({ children }: { children: (project: Project) => ReactNode }) {
     return watchProject(firestore(), projectId, setProject);
   }, [user, projectId]);
 
-  if (!projectId) return <p style={{ color: '#666' }}>No project selected.</p>;
-  if (project === undefined) return <p style={{ color: '#666' }}>Loading…</p>;
-  if (project === null) return <p style={{ color: '#666' }}>That project no longer exists.</p>;
+  if (!projectId) return <p style={{ color: colour.muted }}>No project selected.</p>;
+  if (project === undefined) return <p style={{ color: colour.muted }}>Loading…</p>;
+  if (project === null) return <p style={{ color: colour.muted }}>That project no longer exists.</p>;
 
   return (
     <>
@@ -39,7 +40,7 @@ function Inner({ children }: { children: (project: Project) => ReactNode }) {
 
 export default function ProjectScreen({ children }: { children: (project: Project) => ReactNode }) {
   return (
-    <Suspense fallback={<p style={{ color: '#666' }}>Loading…</p>}>
+    <Suspense fallback={<p style={{ color: colour.muted }}>Loading…</p>}>
       <Inner>{children}</Inner>
     </Suspense>
   );

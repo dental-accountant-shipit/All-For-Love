@@ -1,0 +1,124 @@
+/*
+ * All for Love — Projects: design tokens and base.
+ *
+ * The values here are sampled from allforlovelondon.com and set out in
+ * claude/design-direction.md. They are declared once, as custom properties, and
+ * read everywhere else through src/design/tokens.ts — so there is exactly one
+ * place a colour is decided, and a test that says so.
+ *
+ * The governing rule, which is worth repeating where it will be read:
+ *
+ *   RED MEANS OVER BUDGET.
+ *
+ * Red is All for Love's colour and it is also universally "you have overspent".
+ * Both cannot be true inside a table. So primary actions are black, section
+ * markers are black, and the only red on a working screen is a figure that has
+ * gone the wrong way — plus the focus ring, which is red only while a field is
+ * actually being typed into. The brand keeps red everywhere else: the sign-in
+ * screen, headers, empty states.
+ */
+
+:root {
+  /* Brand */
+  --afl-ink: #000000;
+  --afl-paper: #ffffff;
+  --afl-signature: #c10001;
+  --afl-blush: #fdd1d2;
+  --afl-verdant: #1f5d45;
+
+  /* Warm neutrals */
+  --afl-ground: #f7f4f3;
+  --afl-rule: #e4dedc;
+  --afl-rule-strong: #c8bfbc;
+  --afl-muted: #7a716e;
+
+  /* Type */
+  --afl-serif: var(--font-afl-serif), Charter, 'Source Serif 4', Georgia, serif;
+  --afl-sans: var(--font-afl-sans), 'Helvetica Neue', Helvetica, Arial, sans-serif;
+
+  /* The navigation gesture from the live site: uppercase serif, heavily
+     tracked. Cheap to carry into an application and instantly recognisable. */
+  --afl-tracking-nav: 0.24em;
+  --afl-tracking-label: 0.16em;
+
+  /* Working screens use small radii; the big soft radius belongs to
+     front-of-house colour panels only. */
+  --afl-radius: 3px;
+  --afl-radius-panel: 22px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--afl-paper);
+  color: var(--afl-ink);
+  font-family: var(--afl-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Money and every other figure that gets compared down a column. Archivo has
+   true tabular figures, which is the reason it was chosen over the site's
+   interface face. */
+.afl-figures {
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--afl-serif);
+  font-weight: 400;
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* The one non-financial red on a working screen, and only while a field is
+   actually being typed into. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--afl-signature);
+  outline-offset: 1px;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--afl-ink);
+  outline-offset: 2px;
+}
+
+::placeholder {
+  color: var(--afl-rule-strong);
+}
+
+/* No scroll-triggered anything, and nothing slow enough to be noticed while a
+   figure is being entered. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

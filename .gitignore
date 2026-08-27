@@ -29,6 +29,10 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 
+# Font files are committed on purpose: OFL-licensed, and a build that needs
+# somebody else's CDN is a build that fails on a train.
+!src/app/fonts/*.woff2
+
 # Reference workbooks live in Google Drive, never here
 *.xlsx
 *.xlsm
@@ -42,6 +46,3 @@ coverage/
 _afl-*.zip
 _unpack*/
 _stale-git-locks/
-
-# Local scratch used to move work between machines — safe to delete
-_afl-transfer.tgz

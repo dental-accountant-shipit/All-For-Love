@@ -25,6 +25,8 @@ import {
 } from '../lib/budget/gridState';
 import { lumpValues, marginOf, parseClipboardTable, parseMoney, profitOf } from '../domain/values';
 import { formatGBP, formatPercent } from '../domain/money';
+import { colour, radius, type as typeToken } from '../design/tokens';
+import { tableHead, tableCell, tableTotal, buttonQuiet } from '../design/ui';
 import type { CostMode, CostValues } from '../domain/types';
 import { HEADINGS, cellText, interpret, isEditable, type GridRow } from '../lib/budget/interpret';
 import DescriptionPicker from './DescriptionPicker';
@@ -86,6 +88,15 @@ export default function BudgetGrid(props: BudgetGridProps) {
   useEffect(() => {
     if (state.editing !== null) inputRef.current?.focus();
   }, [state.editing, state.focus.row, state.focus.col]);
+
+  // Opening the add-a-line form lets go of whatever cell was selected. A
+  // highlighted cell behind an open form is an invitation to type into the
+  // wrong one, and belt-and-braces against the grid grabbing keys it should
+  // not have.
+  const addingIn = props.addingIn;
+  useEffect(() => {
+    if (addingIn) setState(initialGridState);
+  }, [addingIn]);
 
   const commit = useCallback(
     (rowIndex: number, col: ColumnKey, value: string) => {
@@ -149,6 +160,17 @@ export default function BudgetGrid(props: BudgetGridProps) {
   );
 
   const onKeyDown = (event: React.KeyboardEvent) => {
+    // Keys typed inside something nested in the grid belong to that something.
+    //
+    // The grid listens on its wrapping element, so every keystroke in the
+    // add-a-line form bubbled up to it. With a cell focused — which it is the
+    // moment anybody has clicked one — the grid took each printable character
+    // as "start editing that cell", called preventDefault, and the character
+    // never reached the field being typed into. The form looked broken and the
+    // grid quietly filled a cell nobody was looking at.
+    const target = event.target as HTMLElement | null;
+    if (target?.closest?.('[data-afl-own-keys]')) return;
+
     const result = handleKey(
       state,
       {
@@ -257,6 +279,10 @@ export default function BudgetGrid(props: BudgetGridProps) {
                   style={{
                     ...(derived ? S.readOnlyValue : focused ? S.fieldFocused : S.field),
                     ...(!derived && cellText(row, col) === '' ? S.placeholder : null),
+                    // The only colour a figure ever carries. Red here means the
+                    // line loses money, and red means nothing else anywhere in
+                    // this table — which is why the buttons are black.
+                    ...(col === 'profit' && isLoss(row) ? S.loss : null),
                   }}
                 >
                   {cellText(row, col) || (derived ? '' : placeholderFor(col))}
@@ -377,7 +403,14 @@ export default function BudgetGrid(props: BudgetGridProps) {
             <td style={{ ...S.cell, ...columnStyle('clientPrice'), ...S.total }}>
               {(totals.clientPrice / 100).toFixed(2)}
             </td>
-            <td style={{ ...S.cell, ...columnStyle('profit'), ...S.total }}>
+            <td
+              style={{
+                ...S.cell,
+                ...columnStyle('profit'),
+                ...S.total,
+                ...((profitOf(totalValues) ?? 0) < 0 ? S.loss : null),
+              }}
+            >
               {profitOf(totalValues) === null ? '—' : formatGBP(profitOf(totalValues)!)}{' '}
               <em style={S.hint}>{formatPercent(marginOf(totalValues))}</em>
             </td>
@@ -429,6 +462,17 @@ function columnStyle(col: ColumnKey): React.CSSProperties {
 }
 
 /**
+ * A line that costs more than it earns.
+ *
+ * Null profit is not a loss — it is an unknown, from an imported line whose
+ * budget was never recorded — so it is left plain rather than coloured.
+ */
+function isLoss(row: GridRow): boolean {
+  const profit = profitOf(row.values);
+  return profit !== null && profit < 0;
+}
+
+/**
  * What an empty cell says.
  *
  * An empty budget used to be a grid of blank space with no indication that any
@@ -450,70 +494,65 @@ function placeholderFor(col: ColumnKey): string {
 
 /** Layout only. No brand: the visual design comes after the interaction works. */
 const S: Record<string, React.CSSProperties> = {
-  formCell: { padding: 0, borderBottom: '1px solid #f0f0f0' },
-  addCell: {
-    padding: '4px 0 10px',
-    borderBottom: '1px solid #f0f0f0',
-  },
+  addCell: { padding: '6px 6px 14px', borderBottom: `1px solid ${colour.rule}` },
   addButton: {
-    background: 'none',
-    border: 'none',
-    padding: '2px 0',
-    font: 'inherit',
+    ...buttonQuiet,
     fontSize: 12,
-    color: '#c10001',
-    cursor: 'pointer',
-  },
-  wrap: { outline: 'none', fontFamily: 'system-ui, sans-serif', fontSize: 14 },
-  table: { borderCollapse: 'collapse', width: '100%', fontVariantNumeric: 'tabular-nums' },
-  head: {
-    textAlign: 'left',
-    fontSize: 11,
-    letterSpacing: '0.08em',
+    fontWeight: 600,
+    letterSpacing: typeToken.trackingLabel,
     textTransform: 'uppercase',
-    padding: '8px 8px',
-    borderBottom: '1px solid #999',
-    whiteSpace: 'nowrap',
+    color: colour.ink,
+    textDecoration: 'none',
   },
-  cell: { padding: '3px 4px', height: 38, borderBottom: '1px solid #f0efec' },
+  formCell: { padding: 0, borderBottom: `1px solid ${colour.rule}` },
+
+  wrap: { outline: 'none' },
+  table: { borderCollapse: 'collapse', width: '100%', fontVariantNumeric: 'tabular-nums' },
+  head: tableHead,
+  cell: tableCell,
+
   // Every cell that accepts typing looks like it accepts typing. The old grid
   // drew plain text until you clicked, which gave somebody filling in their
   // first budget nothing to aim at.
   field: {
     display: 'block',
-    padding: '7px 9px',
+    padding: '8px 9px',
     minHeight: 20,
-    border: '1px solid #e4dfd7',
-    borderRadius: 4,
-    background: '#fff',
+    border: `1px solid ${colour.rule}`,
+    borderRadius: radius.base,
+    background: colour.paper,
     cursor: 'text',
     color: 'inherit',
   },
   fieldFocused: {
     display: 'block',
-    padding: '7px 9px',
+    padding: '8px 9px',
     minHeight: 20,
-    border: '1px solid #333',
-    borderRadius: 4,
-    background: '#fff',
+    border: `1px solid ${colour.ink}`,
+    borderRadius: radius.base,
+    background: colour.paper,
     cursor: 'text',
   },
-  readOnlyValue: { display: 'block', padding: '7px 9px', color: '#555' },
-  placeholder: { color: '#b9b3aa' },
-  textCell: { textAlign: 'left', minWidth: 260 },
-  numberCell: { textAlign: 'right', width: 150, whiteSpace: 'nowrap' },
+  readOnlyValue: { display: 'block', padding: '8px 9px', color: colour.muted },
+  placeholder: { color: colour.ruleStrong },
+  loss: { color: colour.signature },
+
+  // A category is a quiet serif line, not a heading that competes with the
+  // project title above it.
   categoryCell: {
     textAlign: 'left',
-    padding: '14px 8px 6px',
-    fontSize: 12,
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase',
-    borderBottom: '1px solid #e5e5e5',
+    padding: '26px 6px 8px',
+    fontFamily: typeToken.serif,
+    fontSize: 15,
+    fontWeight: 400,
+    letterSpacing: '0.02em',
+    color: colour.ink,
+    borderBottom: `1px solid ${colour.rule}`,
   },
-  focused: { outline: '2px solid #333', outlineOffset: -2 },
-  derived: { background: 'transparent', color: '#555' },
-  invalid: { outline: '2px solid #c10001', outlineOffset: -2 },
-  total: { borderTop: '1px solid #000', borderBottom: 'none', fontWeight: 600 },
+
+  derived: { background: 'transparent', color: colour.muted },
+  invalid: { outline: `2px solid ${colour.signature}`, outlineOffset: -2 },
+  total: tableTotal,
   input: {
     width: '100%',
     font: 'inherit',
@@ -521,8 +560,8 @@ const S: Record<string, React.CSSProperties> = {
     outline: 'none',
     boxSizing: 'border-box',
   },
-  hint: { fontStyle: 'normal', fontSize: 11, color: '#777' },
-  error: { color: '#c10001', fontSize: 13 },
-  note: { color: '#555', fontSize: 12, maxWidth: '62ch' },
-  help: { fontSize: 12, color: '#666', marginTop: 16 },
+  hint: { fontStyle: 'normal', fontSize: 11, color: colour.muted },
+  error: { color: colour.signature, fontSize: 13 },
+  note: { color: colour.muted, fontSize: 13, maxWidth: '62ch' },
+  help: { fontSize: 12, color: colour.muted, marginTop: 18, lineHeight: 1.7 },
 };
