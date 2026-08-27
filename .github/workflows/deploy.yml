@@ -69,13 +69,63 @@ jobs:
           set +a
           npm run build
 
+      # The service account arrives as text somebody pasted out of a downloaded
+      # file, which is the one part of this whole setup a person does by hand.
+      # So it is parsed rather than trusted: a byte-order mark from TextEdit, a
+      # stray blank line, or half a file caught by a short Cmd+A all produce a
+      # key that firebase-tools rejects with "have you run firebase login?" —
+      # an error that sends people looking in entirely the wrong place.
+      #
+      # Parsing and re-writing the JSON strips all three, and says plainly
+      # which one happened if it cannot.
       - name: Authenticate
         if: steps.check.outputs.ready == 'yes'
         env:
           SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
-          printf '%s' "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/key.json"
+          # Explicit, rather than trusting the runner's default shell flags:
+          # a credentials check that reports a problem and then exits 0 is
+          # worse than no check, because the failure resurfaces two steps
+          # later wearing a different error.
+          set -eu
+          node -e '
+            const { writeFileSync } = require("node:fs");
+
+            const raw = (process.env.SERVICE_ACCOUNT ?? "").replace(/^\uFEFF/, "").trim();
+            const fail = (why, fix) => {
+              console.error(`\nThe FIREBASE_SERVICE_ACCOUNT secret ${why}.\n${fix}\n`);
+              process.exit(1);
+            };
+
+            if (!raw.startsWith("{") || !raw.endsWith("}")) {
+              fail(
+                "is not a whole JSON file",
+                "It has to start with { and end with }. Open the downloaded .json again, " +
+                  "press Cmd+A then Cmd+C, and update the secret.",
+              );
+            }
+
+            let key;
+            try {
+              key = JSON.parse(raw);
+            } catch (error) {
+              fail(`could not be read as JSON (${error.message})`, "Copy the whole file again and update the secret.");
+            }
+
+            for (const field of ["type", "project_id", "client_email", "private_key"]) {
+              if (!key[field]) fail(`has no "${field}"`, "That is not a service account key. Generate a new private key in Firebase console → Project settings → Service accounts.");
+            }
+            if (!key.private_key.includes("BEGIN PRIVATE KEY")) {
+              fail("has a private_key that does not look like a key", "Copy the whole file again and update the secret.");
+            }
+
+            // Re-written from the parsed object, so whatever whitespace or
+            // encoding came along for the ride does not reach the CLI.
+            writeFileSync(`${process.env.RUNNER_TEMP}/key.json`, JSON.stringify(key));
+            console.log(`Credentials look right — project ${key.project_id}, account ${key.client_email}.`);
+          '
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/key.json" >> "$GITHUB_ENV"
+          echo "GOOGLE_CLOUD_PROJECT=all-for-love-8ca52" >> "$GITHUB_ENV"
 
       - name: Deploy the site and the rules
         if: steps.check.outputs.ready == 'yes'
