@@ -180,6 +180,8 @@ export async function createSuppliers(
     vatRegistered?: boolean;
     xeroContactId?: string | null;
   }>,
+  /** Called after each batch, so a long import can say where it has got to. */
+  onProgress?: (written: number, total: number) => void,
 ): Promise<number> {
   const audit = newAudit(uid);
   let written = 0;

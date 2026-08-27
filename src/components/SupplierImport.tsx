@@ -28,6 +28,7 @@ export interface SupplierImportProps {
   onImport: (
     suppliers: SupplierImportPlan['toAdd'],
     replaceExisting: boolean,
+    onProgress: (written: number, total: number) => void,
   ) => Promise<number> | number;
   onClose: () => void;
 }
@@ -40,6 +41,7 @@ export default function SupplierImport({ existing, onImport, onClose }: Supplier
   const [plan, setPlan] = useState<SupplierImportPlan | null>(null);
   const [replace, setReplace] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ written: number; total: number } | null>(null);
   const [done, setDone] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -130,8 +132,11 @@ export default function SupplierImport({ existing, onImport, onClose }: Supplier
               onConfirm={async () => {
                 setBusy(true);
                 setError(null);
+                setProgress({ written: 0, total: plan.toAdd.length });
                 try {
-                  const written = await onImport(plan.toAdd, replace);
+                  const written = await onImport(plan.toAdd, replace, (done, total) =>
+                    setProgress({ written: done, total }),
+                  );
                   setDone(written);
                 } catch (err) {
                   setError(
@@ -139,8 +144,10 @@ export default function SupplierImport({ existing, onImport, onClose }: Supplier
                   );
                 } finally {
                   setBusy(false);
+                  setProgress(null);
                 }
               }}
+              progress={progress}
             />
           ) : null}
         </>
@@ -156,6 +163,7 @@ function Review({
   replace,
   onReplaceChange,
   onConfirm,
+  progress,
 }: {
   plan: SupplierImportPlan;
   busy: boolean;
@@ -163,6 +171,7 @@ function Review({
   replace: boolean;
   onReplaceChange: (next: boolean) => void;
   onConfirm: () => void;
+  progress: { written: number; total: number } | null;
 }) {
   const [showSkipped, setShowSkipped] = useState(false);
 
@@ -275,7 +284,9 @@ function Review({
           <div style={S.actions}>
             <button type="button" style={buttonPrimary} disabled={busy} onClick={onConfirm}>
               {busy
-                ? 'Adding…'
+                ? progress
+                  ? `Adding… ${progress.written} of ${progress.total}`
+                  : 'Adding…'
                 : replace
                   ? `Replace the list with ${plan.toAdd.length}`
                   : `Add ${plan.toAdd.length} ${plan.toAdd.length === 1 ? 'supplier' : 'suppliers'}`}

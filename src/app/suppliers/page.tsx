@@ -19,6 +19,7 @@ import type { Supplier, Transaction } from '../../domain/types';
 import PageHeader from '../../components/PageHeader';
 import SupplierImport from '../../components/SupplierImport';
 import { colour } from '../../design/tokens';
+import { input as inputStyle } from '../../design/ui';
 
 export default function SuppliersPage() {
   const { user, can } = useAuth();
@@ -27,6 +28,7 @@ export default function SuppliersPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Supplier | null>(null);
 
   useEffect(
@@ -46,6 +48,21 @@ export default function SuppliersPage() {
   if (!suppliers) return <p style={{ color: colour.muted }}>Loading suppliers…</p>;
 
   const editable = can('manageSuppliers');
+
+  // A real supplier list is well over a thousand names. Drawing all of them is
+  // slow enough to be felt — every keystroke elsewhere on the page, and every
+  // batch of an import, re-rendered the lot — and it is not usable anyway:
+  // nobody scrolls to find "Vianen". So it is searched, and only a screenful is
+  // drawn at a time.
+  const needle = search.trim().toLowerCase();
+  const matches = needle
+    ? suppliers.filter(
+        (supplier) =>
+          supplier.name.toLowerCase().includes(needle) ||
+          (supplier.kind ?? '').toLowerCase().includes(needle),
+      )
+    : suppliers;
+  const shown = matches.slice(0, SHOW);
 
   return (
     <>
@@ -93,11 +110,11 @@ export default function SuppliersPage() {
         <SupplierImport
           existing={suppliers ?? []}
           onClose={() => setImporting(false)}
-          onImport={async (rows, replaceExisting) => {
+          onImport={async (rows, replaceExisting, onProgress) => {
             // Retire first, so the new list is the whole list from the moment
             // it lands rather than briefly sitting alongside the old one.
             if (replaceExisting) await retireAllSuppliers(db, user.uid);
-            return createSuppliers(db, user.uid, rows);
+            return createSuppliers(db, user.uid, rows, onProgress);
           }}
         />
       ) : null}
@@ -143,6 +160,27 @@ export default function SuppliersPage() {
       {suppliers.length === 0 ? (
         <p style={hint}>No suppliers yet.</p>
       ) : (
+        <>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 14 }}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search suppliers"
+            style={{ ...searchBox }}
+          />
+          <span style={hint}>
+            {needle ? (
+              <>
+                {matches.length} of {suppliers.length}
+              </>
+            ) : (
+              <>
+                {suppliers.length} {suppliers.length === 1 ? 'supplier' : 'suppliers'}
+              </>
+            )}
+            {matches.length > SHOW ? <> · showing the first {SHOW}</> : null}
+          </span>
+        </div>
         <table style={table}>
           <thead>
             <tr>
@@ -155,7 +193,7 @@ export default function SuppliersPage() {
             </tr>
           </thead>
           <tbody>
-            {suppliers.map((s) => (
+            {shown.map((s) => (
               <tr key={s.id} style={s.active ? undefined : { opacity: 0.55 }}>
                 <td style={td}>
                   <button type="button" style={link} onClick={() => setSelected(s)}>
@@ -181,6 +219,15 @@ export default function SuppliersPage() {
             ))}
           </tbody>
         </table>
+        {matches.length === 0 ? (
+          <p style={{ ...hint, marginTop: 14 }}>Nothing matches &ldquo;{search}&rdquo;.</p>
+        ) : null}
+        {matches.length > SHOW ? (
+          <p style={{ ...hint, marginTop: 14 }}>
+            {matches.length - SHOW} more. Type a few letters to narrow it down.
+          </p>
+        ) : null}
+        </>
       )}
 
       <p style={{ ...hint, marginTop: 16, maxWidth: '64ch' }}>
@@ -303,6 +350,11 @@ function Field({
     </label>
   );
 }
+
+/** A screenful. Enough to browse, few enough to draw instantly. */
+const SHOW = 100;
+
+const searchBox: React.CSSProperties = { ...inputStyle, maxWidth: 300 };
 
 const table: React.CSSProperties = {
   borderCollapse: 'collapse',
