@@ -3,12 +3,23 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+import EmptyState from '../../components/EmptyState';
+import PageHeader from '../../components/PageHeader';
 import { useAuth } from '../../lib/auth/AuthProvider';
 import { firestore } from '../../lib/firestore/client';
 import { createProject, watchProjects } from '../../lib/firestore/projects';
 import { formatGBP, formatPercent } from '../../domain/money';
 import type { Project } from '../../domain/types';
-import { colour } from '../../design/tokens';
+import { colour, type as typeToken } from '../../design/tokens';
+import {
+  buttonPrimary,
+  buttonSecondary,
+  hint as hintStyle,
+  input as inputStyle,
+  label as labelStyle,
+  tableCell,
+  tableHead,
+} from '../../design/ui';
 
 export default function ProjectsPage() {
   const { user, can } = useAuth();
@@ -24,25 +35,46 @@ export default function ProjectsPage() {
 
   return (
     <>
-      <header style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 20 }}>
-        <h1 style={{ fontWeight: 400, fontSize: 22, marginRight: 'auto' }}>Projects</h1>
-        {can('createProject') ? (
-          <button type="button" onClick={() => setCreating((v) => !v)} style={btn}>
-            {creating ? 'Cancel' : 'New project'}
-          </button>
-        ) : null}
-      </header>
+      <PageHeader
+        title="Projects"
+        meta={
+          projects.length > 0
+            ? `${projects.length} ${projects.length === 1 ? 'project' : 'projects'}`
+            : undefined
+        }
+        actions={
+          can('createProject') ? (
+            <button
+              type="button"
+              onClick={() => setCreating((v) => !v)}
+              style={creating ? buttonSecondary : buttonPrimary}
+            >
+              {creating ? 'Cancel' : 'New project'}
+            </button>
+          ) : null
+        }
+      />
 
       {creating ? <NewProjectForm onDone={() => setCreating(false)} /> : null}
 
-      {projects.length === 0 ? (
-        <p style={{ color: colour.muted, maxWidth: '56ch' }}>
-          No projects yet.{' '}
-          {can('createProject')
-            ? 'Create one to start a budget — it opens straight into the grid.'
-            : 'A director or producer creates the first one.'}
-        </p>
-      ) : (
+      {projects.length === 0 && !creating ? (
+        <EmptyState
+          title="No projects yet"
+          action={
+            can('createProject') ? (
+              <button type="button" onClick={() => setCreating(true)} style={buttonPrimary}>
+                Create the first project
+              </button>
+            ) : null
+          }
+        >
+          <p style={{ margin: 0 }}>
+            {can('createProject')
+              ? 'A project holds one event: its budget, what has been committed to suppliers, what has actually been spent, and what it is forecast to make. It opens straight into the budget.'
+              : 'A director or producer creates the first one.'}
+          </p>
+        </EmptyState>
+      ) : projects.length === 0 ? null : (
         <div style={{ overflowX: 'auto' }}>
           <table style={table}>
             <thead>
@@ -61,20 +93,38 @@ export default function ProjectsPage() {
               {projects.map((p) => (
                 <tr key={p.id}>
                   <td style={td}>
-                    <Link href={`/project?id=${p.id}`}>{p.name}</Link>
+                    <Link href={`/project?id=${p.id}`} style={projectLink}>
+                      {p.name}
+                    </Link>
                     {p.subEventMode === 'multiple' ? (
-                      <em style={hint}> {p.rollup.subEvents?.length ?? 0} sub-events</em>
+                      <em style={hint}> · {p.rollup.subEvents?.length ?? 0} sub-events</em>
                     ) : null}
                   </td>
-                  <td style={td}>{p.clientName}</td>
-                  <td style={td}>{p.eventDate ? p.eventDate.slice(0, 10) : '—'}</td>
-                  <td style={td}>{p.status.replace(/_/g, ' ')}</td>
+                  <td style={{ ...td, color: colour.muted }}>{p.clientName}</td>
+                  <td style={{ ...td, color: colour.muted, whiteSpace: 'nowrap' }}>
+                    {p.eventDate ? formatShortDate(p.eventDate) : '—'}
+                  </td>
+                  <td style={td}>
+                    <span style={statusChip}>{p.status.replace(/_/g, ' ')}</span>
+                  </td>
                   <td style={num}>{formatGBP(p.rollup.currentAgreedClientRevenue)}</td>
-                  <td style={num}>{formatGBP(p.rollup.forecastCost)}</td>
-                  <td style={num}>
+                  <td style={{ ...num, color: colour.muted }}>
+                    {formatGBP(p.rollup.forecastCost)}
+                  </td>
+                  <td
+                    style={{
+                      ...num,
+                      // The one figure on this screen that carries good and bad
+                      // news, and the only one that is ever coloured.
+                      ...(can('viewProfit') && p.rollup.forecastProfit < 0
+                        ? { color: colour.signature }
+                        : null),
+                      fontWeight: 500,
+                    }}
+                  >
                     {can('viewProfit') ? formatGBP(p.rollup.forecastProfit) : '—'}
                   </td>
-                  <td style={num}>
+                  <td style={{ ...num, color: colour.muted }}>
                     {can('viewProfit') ? formatPercent(p.rollup.forecastMargin) : '—'}
                   </td>
                 </tr>
@@ -128,14 +178,15 @@ function NewProjectForm({ onDone }: { onDone: () => void }) {
         }
       }}
     >
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+      <p style={formTitle}>New project</p>
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
         <Field label="Project name" value={name} onChange={setName} required />
         <Field label="Client" value={clientName} onChange={setClientName} required />
         <Field label="Event date" value={eventDate} onChange={setEventDate} type="date" />
         <Field label="Venue" value={venue} onChange={setVenue} />
       </div>
 
-      <label style={{ ...hint, display: 'block', marginTop: 12 }}>
+      <label style={{ ...hint, display: 'block', marginTop: 16 }}>
         <input
           type="checkbox"
           checked={multiDay}
@@ -163,7 +214,7 @@ function NewProjectForm({ onDone }: { onDone: () => void }) {
 
       {error ? <p style={{ color: colour.signature, fontSize: 13 }}>{error}</p> : null}
 
-      <button type="submit" disabled={busy} style={{ ...btn, marginTop: 12 }}>
+      <button type="submit" disabled={busy} style={{ ...btn, marginTop: 18 }}>
         {busy ? 'Creating…' : 'Create project'}
       </button>
     </form>
@@ -184,8 +235,8 @@ function Field({
   required?: boolean;
 }) {
   return (
-    <label style={{ ...hint, display: 'block' }}>
-      {label}
+    <label style={{ display: 'block', flex: '1 1 200px', minWidth: 170 }}>
+      <span style={fieldLabel}>{label}</span>
       <input
         type={type}
         value={value}
@@ -197,50 +248,56 @@ function Field({
   );
 }
 
+/** 6 Sept 2026 — short enough for a column, unambiguous about the month. */
+function formatShortDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso.slice(0, 10);
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 const table: React.CSSProperties = {
   borderCollapse: 'collapse',
   width: '100%',
   fontSize: 14,
   fontVariantNumeric: 'tabular-nums',
 };
-const th: React.CSSProperties = {
-  textAlign: 'left',
-  fontSize: 11,
-  letterSpacing: '0.08em',
+const th: React.CSSProperties = tableHead;
+const td: React.CSSProperties = { ...tableCell, padding: '3px 10px' };
+const num: React.CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
+const hint: React.CSSProperties = hintStyle;
+
+/** A project name is the one piece of text on this screen worth setting well. */
+const projectLink: React.CSSProperties = {
+  fontFamily: typeToken.serif,
+  fontSize: 17,
+  color: colour.ink,
+  textDecoration: 'none',
+};
+
+const statusChip: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 600,
+  letterSpacing: typeToken.trackingLabel,
   textTransform: 'uppercase',
   color: colour.muted,
-  padding: '8px',
-  borderBottom: `1px solid ${colour.ruleStrong}`,
   whiteSpace: 'nowrap',
 };
-const td: React.CSSProperties = { padding: '8px', borderBottom: `1px solid ${colour.rule}` };
-const num: React.CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
-const hint: React.CSSProperties = { fontSize: 12, color: colour.muted };
+
 const panel: React.CSSProperties = {
   border: `1px solid ${colour.rule}`,
-  padding: 16,
-  marginBottom: 24,
+  borderLeft: `3px solid ${colour.ink}`,
+  background: colour.ground,
+  padding: '20px 22px',
+  marginBottom: 30,
 };
-const input: React.CSSProperties = {
-  display: 'block',
-  font: 'inherit',
-  fontSize: 14,
-  padding: '6px 8px',
-  marginTop: 4,
-  border: `1px solid ${colour.rule}`,
-  borderRadius: 4,
-  color: colour.ink,
-};
-const btn: React.CSSProperties = {
-  font: 'inherit',
-  fontSize: 12,
-  textTransform: 'uppercase',
-  letterSpacing: '0.1em',
+const input: React.CSSProperties = { ...inputStyle, marginTop: 0 };
+const btn: React.CSSProperties = buttonPrimary;
+const fieldLabel: React.CSSProperties = labelStyle;
+const formTitle: React.CSSProperties = {
+  margin: '0 0 16px',
+  fontSize: 11,
   fontWeight: 600,
-  padding: '8px 14px',
-  background: colour.ink,
-  color: colour.paper,
-  border: 'none',
-  borderRadius: 2,
-  cursor: 'pointer',
+  letterSpacing: typeToken.trackingLabel,
+  textTransform: 'uppercase',
+  color: colour.muted,
 };

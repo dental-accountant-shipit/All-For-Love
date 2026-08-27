@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import ProjectScreen from '../../../components/ProjectScreen';
 import AddLineForm from '../../../components/AddLineForm';
+import EmptyState from '../../../components/EmptyState';
 import BudgetGrid from '../../../components/BudgetGrid';
 import CostItemDrawer from '../../../components/CostItemDrawer';
 import type { GridRow } from '../../../lib/budget/interpret';
@@ -50,6 +51,13 @@ import type {
   Transaction,
 } from '../../../domain/types';
 import { colour } from '../../../design/tokens';
+import {
+  buttonPrimary,
+  buttonSecondary,
+  buttonQuiet,
+  input as inputStyle,
+  statusPill,
+} from '../../../design/ui';
 
 export default function BudgetPage() {
   return <ProjectScreen>{(project) => <Budget project={project} />}</ProjectScreen>;
@@ -176,8 +184,16 @@ function Budget({ project }: { project: Project }) {
           </label>
         ) : null}
 
-        <span style={{ ...hint, marginRight: 'auto' }}>
-          {project.openDraftVersionId ? 'Draft — not yet approved' : 'No open draft'}
+        {/* The state of the budget, said plainly and in the one place the eye
+            lands first. Blush for an open draft: it is the working state, not a
+            warning, and red is spoken for. */}
+        <span
+          style={{
+            ...statusPill(project.openDraftVersionId ? 'committed' : 'provisional'),
+            marginRight: 'auto',
+          }}
+        >
+          {project.openDraftVersionId ? 'Draft in progress' : 'No open draft'}
         </span>
 
         {can('editBudget') ? (
@@ -259,10 +275,21 @@ function Budget({ project }: { project: Project }) {
       ) : null}
 
       {categories.length === 0 ? (
-        <p style={hint}>
-          This budget has no categories yet. Add one — Florals, Labour, Transport — and the
-          grid appears underneath it.
-        </p>
+        <EmptyState
+          title="This budget is empty"
+          action={
+            can('editBudget') ? (
+              <button type="button" style={buttonPrimary} onClick={() => setAdding(true)}>
+                Add the first category
+              </button>
+            ) : null
+          }
+        >
+          <p style={{ margin: 0 }}>
+            A budget is built in sections — Florals, Labour, Transport — and lines go
+            inside them. Add one and the grid appears underneath it.
+          </p>
+        </EmptyState>
       ) : (
         <BudgetGrid
           rows={rows}
@@ -466,31 +493,19 @@ function Budget({ project }: { project: Project }) {
 
 const bar: React.CSSProperties = {
   display: 'flex',
-  gap: 16,
-  alignItems: 'baseline',
-  marginBottom: 16,
+  gap: 12,
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  marginBottom: 18,
 };
-const hint: React.CSSProperties = { fontSize: 12, color: colour.muted };
-const select: React.CSSProperties = { font: 'inherit', fontSize: 13, padding: '4px 6px' };
-const btn: React.CSSProperties = {
-  font: 'inherit',
-  fontSize: 12,
-  textTransform: 'uppercase',
-  letterSpacing: '0.1em',
-  fontWeight: 600,
-  padding: '6px 12px',
-  background: 'transparent',
-  color: colour.ink,
-  border: `1px solid ${colour.rule}`,
-  borderRadius: 2,
-  cursor: 'pointer',
+const hint: React.CSSProperties = { fontSize: 13, color: colour.muted };
+const select: React.CSSProperties = {
+  ...inputStyle,
+  width: 'auto',
+  fontSize: 13,
+  padding: '7px 9px',
 };
-const linkBtn: React.CSSProperties = {
-  background: 'none',
-  border: 'none',
-  padding: 0,
-  font: 'inherit',
-  color: colour.signature,
-  cursor: 'pointer',
-  textDecoration: 'underline',
-};
+const btn: React.CSSProperties = { ...buttonSecondary, fontSize: 11, padding: '8px 13px' };
+// Not red. Red inside a working screen means over budget and nothing else, so
+// a Cancel link cannot have it — see the ruling in globals.css.
+const linkBtn: React.CSSProperties = { ...buttonQuiet, fontSize: 13 };

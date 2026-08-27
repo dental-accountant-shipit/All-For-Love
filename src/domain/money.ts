@@ -32,6 +32,23 @@ export function formatGBP(pence: Pence, opts: { showZero?: boolean } = {}): stri
 }
 
 /**
+ * The same figure without its symbol, for a column that has one in its header.
+ *
+ * Repeating £ down two hundred rows costs a character of width on every line
+ * and tells the reader nothing they did not know from the heading. It also
+ * breaks the alignment that tabular figures exist to give: the digits no longer
+ * start in the same place.
+ */
+export function formatAmount(pence: Pence): string {
+  const negative = pence < 0;
+  const body = (Math.abs(pence) / 100).toLocaleString('en-GB', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${negative ? '−' : ''}${body}`;
+}
+
+/**
  * Margin as a fraction (0.376), not a percentage. Percentages are formatted
  * at display time only — storing a rounded percentage loses information.
  * Zero revenue yields null rather than Infinity or NaN.

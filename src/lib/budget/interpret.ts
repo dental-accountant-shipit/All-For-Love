@@ -12,7 +12,7 @@ import {
   profitOf,
   quantityValues,
 } from '../../domain/values';
-import { formatGBP } from '../../domain/money';
+import { formatAmount } from '../../domain/money';
 import type { CostMode, CostValues } from '../../domain/types';
 import type { ColumnKey } from './gridState';
 
@@ -77,16 +77,16 @@ export function cellText(row: GridRow, col: ColumnKey): string {
     case 'unitCost':
       // Null here is not "nothing". It means this side is a lump total rather
       // than a rate, which is a real and deliberate state — see quantityValues.
-      return row.values.unitCost === null ? '' : (row.values.unitCost / 100).toFixed(2);
+      return row.values.unitCost === null ? '' : formatAmount(row.values.unitCost);
     case 'budgetCost':
       // Never recorded reads as a dash. Zero reads as zero. They differ.
       if (row.values.budgetCost === null) return '—';
-      return row.values.budgetCost === 0 ? '' : (row.values.budgetCost / 100).toFixed(2);
+      return row.values.budgetCost === 0 ? '' : formatAmount(row.values.budgetCost);
     case 'clientPrice':
-      return row.values.clientPrice === 0 ? '' : (row.values.clientPrice / 100).toFixed(2);
+      return row.values.clientPrice === 0 ? '' : formatAmount(row.values.clientPrice);
     case 'profit': {
       const profit = profitOf(row.values);
-      return profit === null ? '—' : formatGBP(profit);
+      return profit === null ? '—' : formatAmount(profit);
     }
   }
 }

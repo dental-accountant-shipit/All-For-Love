@@ -19,7 +19,7 @@ import {
 } from '../../../lib/firestore/versions';
 import { formatGBP } from '../../../domain/money';
 import type { BudgetVersion, CostItem, Project } from '../../../domain/types';
-import { colour } from '../../../design/tokens';
+import { colour, type as typeToken } from '../../../design/tokens';
 
 export default function VersionsPage() {
   return <ProjectScreen>{(project) => <Versions project={project} />}</ProjectScreen>;
@@ -307,11 +307,10 @@ function Diff({ lines }: { lines: DiffLine[] }) {
 
 const bar: React.CSSProperties = { display: 'flex', gap: 12, alignItems: 'baseline', marginBottom: 16 };
 const h2: React.CSSProperties = {
-  fontSize: 12,
-  textTransform: 'uppercase',
-  letterSpacing: '0.1em',
-  fontWeight: 600,
-  marginBottom: 8,
+  fontFamily: typeToken.serif,
+  fontSize: 19,
+  fontWeight: 400,
+  margin: '0 0 12px',
 };
 const table: React.CSSProperties = {
   borderCollapse: 'collapse',

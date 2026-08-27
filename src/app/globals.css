@@ -73,6 +73,23 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * A cell you can type into.
+ *
+ * A faint ground rather than an outline: seven outlined boxes on every row
+ * turns a table of money into a form, and a dense budget is read down its
+ * columns. The outline appears when the pointer is over the cell, which is the
+ * moment it is useful, and the focused cell keeps a solid one.
+ */
+.afl-cell {
+  transition: background-color 90ms linear, border-color 90ms linear;
+}
+
+.afl-cell:hover {
+  border-color: var(--afl-rule-strong) !important;
+  background: var(--afl-paper) !important;
+}
+
 h1,
 h2,
 h3 {

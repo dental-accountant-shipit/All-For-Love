@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from 'react';
 
+import FigureStrip from '../../components/FigureStrip';
 import ProjectScreen from '../../components/ProjectScreen';
 import { useAuth } from '../../lib/auth/AuthProvider';
 import { firestore } from '../../lib/firestore/client';
 import { watchProjectRollup } from '../../lib/firestore/liveRollup';
 import { formatGBP, formatPercent } from '../../domain/money';
 import type { Project, ProjectRollup } from '../../domain/types';
+import { colour, type as typeToken } from '../../design/tokens';
+import { tableCell, tableHead } from '../../design/ui';
 
 export default function ProjectOverviewPage() {
   return <ProjectScreen>{(project) => <Overview project={project} />}</ProjectScreen>;
@@ -24,22 +27,34 @@ function Overview({ project }: { project: Project }) {
     return watchProjectRollup(firestore(), project.id, setRollup);
   }, [project.id]);
 
-  if (!rollup) return <p style={{ color: '#666' }}>Calculating…</p>;
+  if (!rollup) return <p style={{ color: colour.muted }}>Calculating…</p>;
 
   const budgetAvailable = rollup.budgetCostKnown;
 
   return (
     <>
-      <dl style={figures}>
-        <Figure label="Current agreed client revenue" value={formatGBP(rollup.currentAgreedClientRevenue)} />
-        <Figure label="Forecast final cost" value={formatGBP(rollup.forecastCost)} />
-        {can('viewProfit') ? (
-          <>
-            <Figure label="Forecast profit" value={formatGBP(rollup.forecastProfit)} />
-            <Figure label="Forecast margin" value={formatPercent(rollup.forecastMargin)} />
-          </>
-        ) : null}
-      </dl>
+      <FigureStrip
+        figures={[
+          {
+            label: 'Agreed client revenue',
+            value: formatGBP(rollup.currentAgreedClientRevenue),
+          },
+          { label: 'Forecast final cost', value: formatGBP(rollup.forecastCost) },
+          // Forecast Profit is never typed and never stored: it is agreed
+          // revenue minus forecast cost, worked out every time it is shown.
+          ...(can('viewProfit')
+            ? [
+                {
+                  label: 'Forecast profit',
+                  value: formatGBP(rollup.forecastProfit),
+                  tone: 'signed' as const,
+                  negative: rollup.forecastProfit < 0,
+                  note: formatPercent(rollup.forecastMargin),
+                },
+              ]
+            : []),
+        ]}
+      />
 
       <section style={block}>
         <h2 style={h2}>Budget, committed, actual, forecast</h2>
@@ -182,17 +197,6 @@ function Overview({ project }: { project: Project }) {
   );
 }
 
-function Figure({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#777' }}>
-        {label}
-      </dt>
-      <dd style={{ margin: '4px 0 0', fontSize: 20, fontVariantNumeric: 'tabular-nums' }}>{value}</dd>
-    </div>
-  );
-}
-
 function Row({
   label,
   value,
@@ -206,30 +210,44 @@ function Row({
 }) {
   return (
     <tr>
-      <td style={{ ...td, fontWeight: strong ? 600 : 400 }}>
+      <td
+        style={{
+          ...td,
+          fontWeight: strong ? 600 : 400,
+          // The line that answers the section sits under a black rule, the same
+          // way a total does in the budget grid.
+          ...(strong ? { borderTop: `1px solid ${colour.ink}`, borderBottom: 'none' } : null),
+        }}
+      >
         {label}
         {rowNote ? <em style={{ ...note, display: 'block', margin: 0 }}>{rowNote}</em> : null}
       </td>
-      <td style={{ ...num, fontWeight: strong ? 600 : 400 }}>{value}</td>
+      <td
+        style={{
+          ...num,
+          fontWeight: strong ? 600 : 400,
+          ...(strong ? { borderTop: `1px solid ${colour.ink}`, borderBottom: 'none' } : null),
+        }}
+      >
+        {value}
+      </td>
     </tr>
   );
 }
 
-const figures: React.CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: 40,
-  margin: '0 0 28px',
-  paddingBottom: 20,
-  borderBottom: '1px solid #e5e5e5',
-};
-const block: React.CSSProperties = { marginBottom: 32, maxWidth: 720 };
+const block: React.CSSProperties = { marginBottom: 40, maxWidth: 760 };
+
+/**
+ * Section headings on this screen are serif and quiet.
+ *
+ * They are labels on groups of figures, not announcements. The figures are the
+ * loud part, and they are loud enough already.
+ */
 const h2: React.CSSProperties = {
-  fontSize: 12,
-  textTransform: 'uppercase',
-  letterSpacing: '0.1em',
-  fontWeight: 600,
-  marginBottom: 8,
+  fontFamily: typeToken.serif,
+  fontSize: 19,
+  fontWeight: 400,
+  margin: '0 0 12px',
 };
 const table: React.CSSProperties = {
   borderCollapse: 'collapse',
@@ -237,15 +255,7 @@ const table: React.CSSProperties = {
   fontSize: 14,
   fontVariantNumeric: 'tabular-nums',
 };
-const th: React.CSSProperties = {
-  textAlign: 'left',
-  fontSize: 11,
-  letterSpacing: '0.08em',
-  textTransform: 'uppercase',
-  color: '#777',
-  padding: 8,
-  borderBottom: '1px solid #999',
-};
-const td: React.CSSProperties = { padding: '6px 8px', borderBottom: '1px solid #eee' };
+const th: React.CSSProperties = tableHead;
+const td: React.CSSProperties = { ...tableCell, height: 36, padding: '4px 10px 4px 0' };
 const num: React.CSSProperties = { ...td, textAlign: 'right', whiteSpace: 'nowrap' };
-const note: React.CSSProperties = { fontSize: 12, color: '#777', maxWidth: '62ch' };
+const note: React.CSSProperties = { fontSize: 12, color: colour.muted, maxWidth: '62ch' };

@@ -50,14 +50,18 @@ export default function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const isSignIn = pathname === '/sign-in';
+  // Screens that must render without a session. Sign-in for the obvious
+  // reason; the budget demo because it holds no data at all — it is the grid
+  // running in memory, for trying the interaction — and gating it behind a
+  // login made it unreachable for the one purpose it has.
+  const isPublic = pathname === '/sign-in' || pathname === '/budget-demo';
 
   if (user === undefined) {
     return <Doorway title="Signing in…" />;
   }
 
   if (user === null) {
-    if (isSignIn) return <>{children}</>;
+    if (isPublic) return <>{children}</>;
     return (
       <Doorway title="All for Love — Projects">
         <p style={S.doorwayBody}>

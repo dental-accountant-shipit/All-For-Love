@@ -140,7 +140,10 @@ export default function BudgetDemoPage() {
     [...next].sort((a, b) => (a.sortKey < b.sortKey ? -1 : a.sortKey > b.sortKey ? 1 : 0));
 
   return (
-    <main style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 1000 }}>
+    // This route renders outside the application shell — it has no session and
+    // no data — so it brings its own margins rather than sitting flush against
+    // the window edge.
+    <main style={{ maxWidth: 1240, margin: '0 auto', padding: '40px 28px 90px' }}>
       <h1 style={{ fontWeight: 400, fontSize: 22 }}>Budget — demo</h1>
       <p style={{ color: colour.muted, fontSize: 13, maxWidth: '60ch' }}>
         In memory, unstyled, no Firebase. Try typing <code>15 x 320</code> into a Budget

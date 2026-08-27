@@ -75,7 +75,10 @@ describe('filling in a quantity line', () => {
     expect(result.values.quantity).toBe(15);
   });
 
-  it('shows the working beside the total', () => {
-    expect(cellText(perDay, 'budgetCost')).toBe('6750.00');
+  it('groups thousands, and leaves the currency symbol in the column header', () => {
+    // Repeating the pound sign down two hundred rows costs a character of width
+    // on every line, tells the reader nothing the heading did not, and breaks
+    // the digit alignment that tabular figures exist to give.
+    expect(cellText(perDay, 'budgetCost')).toBe('6,750.00');
   });
 });

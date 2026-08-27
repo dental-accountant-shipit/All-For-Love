@@ -24,7 +24,7 @@ import {
   type GridIntent,
 } from '../lib/budget/gridState';
 import { lumpValues, marginOf, parseClipboardTable, parseMoney, profitOf } from '../domain/values';
-import { formatGBP, formatPercent } from '../domain/money';
+import { formatAmount, formatPercent } from '../domain/money';
 import { colour, radius, type as typeToken } from '../design/tokens';
 import { tableHead, tableCell, tableTotal, buttonQuiet } from '../design/ui';
 import type { CostMode, CostValues } from '../domain/types';
@@ -276,8 +276,10 @@ export default function BudgetGrid(props: BudgetGridProps) {
                 />
               ) : (
                 <span
+                  className={derived ? undefined : 'afl-cell'}
                   style={{
                     ...(derived ? S.readOnlyValue : focused ? S.fieldFocused : S.field),
+                    ...(col === 'profit' ? S.profitValue : null),
                     ...(!derived && cellText(row, col) === '' ? S.placeholder : null),
                     // The only colour a figure ever carries. Red here means the
                     // line loses money, and red means nothing else anywhere in
@@ -398,10 +400,10 @@ export default function BudgetGrid(props: BudgetGridProps) {
             </td>
             <td colSpan={3} style={{ ...S.cell, ...S.total }} />
             <td style={{ ...S.cell, ...columnStyle('budgetCost'), ...S.total }}>
-              {budgetKnown ? (totals.budgetCost / 100).toFixed(2) : '—'}
+              {budgetKnown ? formatAmount(totals.budgetCost) : '—'}
             </td>
             <td style={{ ...S.cell, ...columnStyle('clientPrice'), ...S.total }}>
-              {(totals.clientPrice / 100).toFixed(2)}
+              {formatAmount(totals.clientPrice)}
             </td>
             <td
               style={{
@@ -411,7 +413,7 @@ export default function BudgetGrid(props: BudgetGridProps) {
                 ...((profitOf(totalValues) ?? 0) < 0 ? S.loss : null),
               }}
             >
-              {profitOf(totalValues) === null ? '—' : formatGBP(profitOf(totalValues)!)}{' '}
+              {profitOf(totalValues) === null ? '—' : formatAmount(profitOf(totalValues)!)}{' '}
               <em style={S.hint}>{formatPercent(marginOf(totalValues))}</em>
             </td>
           </tr>
@@ -453,11 +455,15 @@ function columnStyle(col: ColumnKey): React.CSSProperties {
     case 'description':
       return { textAlign: 'left', minWidth: 240, width: 'auto' };
     case 'quantity':
-      return { textAlign: 'right', width: 64, whiteSpace: 'nowrap' };
+      return { textAlign: 'right', width: 70, whiteSpace: 'nowrap' };
     case 'unit':
-      return { textAlign: 'left', width: 86, whiteSpace: 'nowrap' };
+      return { textAlign: 'left', width: 92, whiteSpace: 'nowrap' };
+    case 'unitCost':
+      return { textAlign: 'right', width: 122, whiteSpace: 'nowrap' };
+    case 'profit':
+      return { textAlign: 'right', width: 132, whiteSpace: 'nowrap' };
     default:
-      return { textAlign: 'right', width: 128, whiteSpace: 'nowrap' };
+      return { textAlign: 'right', width: 146, whiteSpace: 'nowrap' };
   }
 }
 
@@ -483,10 +489,13 @@ function placeholderFor(col: ColumnKey): string {
   switch (col) {
     case 'description':
       return 'Type or choose a line…';
+    // Quantity, unit and rate are empty on most lines by design — a lump line
+    // has no quantity. A dash there reads as a value rather than as an empty
+    // field, and three of them per row is a table full of noise.
     case 'quantity':
-      return '—';
     case 'unit':
-      return '—';
+    case 'unitCost':
+      return '';
     default:
       return '0.00';
   }
@@ -518,9 +527,9 @@ const S: Record<string, React.CSSProperties> = {
     display: 'block',
     padding: '8px 9px',
     minHeight: 20,
-    border: `1px solid ${colour.rule}`,
+    border: '1px solid transparent',
     borderRadius: radius.base,
-    background: colour.paper,
+    background: colour.ground,
     cursor: 'text',
     color: 'inherit',
   },
@@ -534,6 +543,9 @@ const S: Record<string, React.CSSProperties> = {
     cursor: 'text',
   },
   readOnlyValue: { display: 'block', padding: '8px 9px', color: colour.muted },
+  // Every other derived cell is a working, and greys back. Profit is the answer
+  // the row exists to give.
+  profitValue: { color: colour.ink, fontWeight: 500 },
   placeholder: { color: colour.ruleStrong },
   loss: { color: colour.signature },
 

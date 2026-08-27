@@ -27,7 +27,7 @@ import {
   type PlanSection,
 } from '../../../domain/import/plan';
 import { formatGBP } from '../../../domain/money';
-import { colour } from '../../../design/tokens';
+import { colour, type as typeToken } from '../../../design/tokens';
 
 export default function AdminImportPage() {
   const { user, can } = useAuth();
@@ -449,8 +449,19 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
 
 // ---------------------------------------------------------------------------
 
-const h1: React.CSSProperties = { fontWeight: 400, fontSize: 22, marginBottom: 8 };
-const h2: React.CSSProperties = { fontWeight: 400, fontSize: 16, margin: '0 0 12px' };
+const h1: React.CSSProperties = {
+  fontFamily: typeToken.serif,
+  fontSize: 32,
+  fontWeight: 400,
+  lineHeight: 1.1,
+  margin: '0 0 10px',
+};
+const h2: React.CSSProperties = {
+  fontFamily: typeToken.serif,
+  fontSize: 19,
+  fontWeight: 400,
+  margin: '0 0 12px',
+};
 const h3: React.CSSProperties = { fontWeight: 600, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 10px' };
 const prose: React.CSSProperties = { fontSize: 14, lineHeight: 1.55, margin: '0 0 10px' };
 const hint: React.CSSProperties = { fontSize: 12, color: colour.muted };

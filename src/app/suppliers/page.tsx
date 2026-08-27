@@ -14,6 +14,7 @@ import {
 import { watchSupplierSpend } from '../../lib/firestore/money';
 import { formatGBP } from '../../domain/money';
 import type { Supplier, Transaction } from '../../domain/types';
+import PageHeader from '../../components/PageHeader';
 import { colour } from '../../design/tokens';
 
 export default function SuppliersPage() {
@@ -44,22 +45,26 @@ export default function SuppliersPage() {
 
   return (
     <>
-      <header style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 20 }}>
-        <h1 style={{ fontWeight: 400, fontSize: 22, marginRight: 'auto' }}>Suppliers</h1>
-        <label style={hint}>
-          <input
-            type="checkbox"
-            checked={showInactive}
-            onChange={(e) => setShowInactive(e.target.checked)}
-          />{' '}
-          Include inactive
-        </label>
+      <PageHeader
+        title="Suppliers"
+        actions={
+          <>
+            <label style={hint}>
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+              />{' '}
+              Include inactive
+            </label>
         {editable ? (
           <button type="button" style={btn} onClick={() => setAdding((v) => !v)}>
             {adding ? 'Cancel' : 'Add supplier'}
-          </button>
-        ) : null}
-      </header>
+            </button>
+            ) : null}
+          </>
+        }
+      />
 
       {adding ? (
         <form

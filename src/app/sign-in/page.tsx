@@ -143,7 +143,7 @@ const S: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
   },
-  panel: { width: '100%', maxWidth: 400, margin: '0 auto', padding: '48px 28px' },
+  panel: { width: '100%', maxWidth: 420, margin: '0 auto', padding: '48px 28px' },
   title: {
     fontFamily: type.serif,
     fontSize: 42,
@@ -152,7 +152,7 @@ const S: Record<string, React.CSSProperties> = {
     color: colour.paper,
     margin: '22px 0 10px',
   },
-  body: { fontSize: 14, color: colour.paper, opacity: 0.66, margin: 0, maxWidth: '34ch' },
+  body: { fontSize: 14, color: colour.paper, opacity: 0.66, margin: 0, maxWidth: '42ch' },
 
   field: { display: 'block', marginBottom: 16 },
   label: {
