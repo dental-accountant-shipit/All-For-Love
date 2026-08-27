@@ -1,0 +1,88 @@
+# Builds and publishes the application whenever main changes.
+#
+# Deliberately quiet until it is configured: with no secrets set it stops with
+# a short explanation rather than failing, so the repository is not covered in
+# red crosses before Firebase exists.
+#
+# What it deploys: the website, the Firestore security rules, the database
+# indexes and the Storage rules. NOT the Cloud Functions — those need the
+# Blaze plan and have their own workflow you start by hand.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the secrets are set
+        id: check
+        run: |
+          if [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ] || [ -z "${{ secrets.FIREBASE_WEB_CONFIG }}" ]; then
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+            echo "### Not deployed yet" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Deployment needs two repository secrets: \`FIREBASE_WEB_CONFIG\` and \`FIREBASE_SERVICE_ACCOUNT\`." >> "$GITHUB_STEP_SUMMARY"
+            echo "See \`docs/DEPLOYING.md\` — it is two copy-and-pastes." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ready=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.ready == 'yes'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        if: steps.check.outputs.ready == 'yes'
+        run: npm ci
+
+      - name: Write the Firebase configuration
+        if: steps.check.outputs.ready == 'yes'
+        env:
+          FIREBASE_WEB_CONFIG: ${{ secrets.FIREBASE_WEB_CONFIG }}
+        run: node scripts/writeEnvFromConfig.mjs
+
+      - name: Build
+        if: steps.check.outputs.ready == 'yes'
+        run: |
+          set -a
+          . ./.env.local
+          set +a
+          npm run build
+
+      - name: Authenticate
+        if: steps.check.outputs.ready == 'yes'
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/key.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/key.json" >> "$GITHUB_ENV"
+
+      - name: Deploy the site and the rules
+        if: steps.check.outputs.ready == 'yes'
+        run: |
+          npx --yes firebase-tools@latest deploy \
+            --only hosting,firestore:rules,firestore:indexes,storage \
+            --non-interactive \
+            --project all-for-love-8ca52
+
+      - name: Say where it went
+        if: steps.check.outputs.ready == 'yes'
+        run: |
+          echo "### Deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://all-for-love-8ca52.web.app" >> "$GITHUB_STEP_SUMMARY"

@@ -25,8 +25,6 @@ ui-debug.log
 .DS_Store
 *.tsbuildinfo
 coverage/
-_afl-update4.zip
-_unpack4/
 
 # Local scratch left by the sync tooling — safe to delete
 _afl-*.zip

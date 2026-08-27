@@ -1,0 +1,48 @@
+# Runs on every push. Needs no secrets and no setup — it works from the
+# first push, before Firebase is configured at all.
+#
+# If this goes red, something in the calculation engine or the interface
+# stopped agreeing with its tests. That is worth knowing before it reaches a
+# real budget.
+
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Tests and type checking
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      # Proves the application still builds, which catches things a unit test
+      # cannot — a bad import, a component that will not render.
+      - name: Build
+        run: npm run build
+        env:
+          # Placeholders. The build only needs these to exist; the real values
+          # are used by the deploy workflow.
+          NEXT_PUBLIC_FIREBASE_API_KEY: build-check
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: build-check
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: build-check
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: build-check
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: build-check
+          NEXT_PUBLIC_FIREBASE_APP_ID: build-check

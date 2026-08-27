@@ -1,0 +1,47 @@
+# The Cloud Functions — the rollup chain and budget approval.
+#
+# Separate from the main deploy, and started by hand, because functions
+# require the Blaze plan. Until Blaze is on this would fail on every push and
+# make a working pipeline look broken.
+#
+# To run it: the Actions tab in GitHub, "Deploy Cloud Functions" on the left,
+# then the "Run workflow" button.
+
+name: Deploy Cloud Functions
+
+on:
+  workflow_dispatch:
+
+jobs:
+  functions:
+    name: Deploy functions
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: |
+          npm ci
+          npm --prefix functions install
+
+      - name: Build the functions
+        run: npm --prefix functions run build
+
+      - name: Authenticate
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/key.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/key.json" >> "$GITHUB_ENV"
+
+      - name: Deploy
+        run: |
+          npx --yes firebase-tools@latest deploy \
+            --only functions \
+            --non-interactive \
+            --project all-for-love-8ca52

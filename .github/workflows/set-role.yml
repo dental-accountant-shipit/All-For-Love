@@ -1,0 +1,84 @@
+# Grant someone a role, without a command line.
+#
+# Roles are Firebase custom claims — the same thing the security rules read.
+# There is no screen inside the application for this, deliberately: the first
+# director has to be created from outside, or anyone who signed up could make
+# themselves one.
+#
+# To run it: the Actions tab in GitHub, "Set a user's role" on the left, then
+# "Run workflow". Type the email address, choose the role, click the button.
+#
+# The person must already exist in Firebase Authentication (console →
+# Authentication → Users → Add user).
+
+name: Set a user's role
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'Email address of the person (they must already exist in Firebase Authentication)'
+        required: true
+        type: string
+      role:
+        description: 'What they may do'
+        required: true
+        type: choice
+        options:
+          - director
+          - producer
+          - finance
+          - viewer
+          - admin
+          - none
+        default: viewer
+
+jobs:
+  set-role:
+    name: Set role
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Authenticate
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/key.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/key.json" >> "$GITHUB_ENV"
+
+      - name: Set the role
+        env:
+          # Never substituted into the script: this is text somebody typed.
+          TARGET_EMAIL: ${{ inputs.email }}
+          TARGET_ROLE: ${{ inputs.role }}
+        run: |
+          npx tsx scripts/setRole.ts \
+            --email "$TARGET_EMAIL" \
+            --role "$TARGET_ROLE" | tee "$RUNNER_TEMP/result.txt"
+          {
+            echo "### Role updated"
+            echo ""
+            cat "$RUNNER_TEMP/result.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Who has what
+        if: always()
+        run: |
+          {
+            echo ""
+            echo "### Everyone, and their role"
+            echo ""
+            echo '```'
+            npx tsx scripts/setRole.ts --list || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
