@@ -21,6 +21,12 @@ note() { printf "%s%s%s\n" "$dim" "$1" "$off"; }
 
 stop() {
   say "Stopping…"
+  # Ask the emulators to write their data out before anything is killed. They
+  # only do it on a clean exit otherwise, so a forced stop — or a Mac shutting
+  # down — would throw away everything since the last start.
+  curl -fsS -X POST "http://127.0.0.1:4400/emulators/export" \
+    -H "Content-Type: application/json" \
+    -d "{\"path\":\"$(pwd)/.local-data\"}" >/dev/null 2>&1
   # Kill the whole process group so the emulators do not outlive the window.
   kill 0 2>/dev/null
   exit 0
