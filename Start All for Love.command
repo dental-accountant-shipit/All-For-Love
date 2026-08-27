@@ -93,9 +93,22 @@ note "Java found"
 # Dependencies
 # --------------------------------------------------------------------------
 
-if [ ! -d node_modules ]; then
-  say "First run — fetching what it needs"
-  note "A few minutes. Only ever happens once."
+# Check for the thing that is actually needed, not for the folder that usually
+# contains it. An interrupted install leaves node_modules present and useless —
+# hundreds of packages, no .bin, and "next: command not found" from a launcher
+# that has already said Ready.
+if [ ! -x node_modules/.bin/next ]; then
+  if [ -d node_modules ]; then
+    say "The installed files are incomplete — repairing"
+    note "Clearing them out and fetching a clean set. A few minutes."
+    # Deleted rather than installed over. A half-finished tree can also be a
+    # tree built for the wrong operating system, and npm will happily leave
+    # those in place because the version numbers look right.
+    rm -rf node_modules
+  else
+    say "First run — fetching what it needs"
+    note "A few minutes. Only ever happens once."
+  fi
   if ! npm install --no-audit --no-fund; then
     say "That did not work"
     echo "Usually the internet connection. Try again; if it keeps failing, send me"
@@ -105,12 +118,31 @@ if [ ! -d node_modules ]; then
   fi
 fi
 
-if [ ! -d functions/node_modules ]; then
+if [ ! -x node_modules/.bin/next ]; then
+  say "Something is wrong with the installed files"
+  echo "npm finished but the application itself is still missing. Deleting the"
+  echo "node_modules folder and running this again is the usual cure."
+  echo; read -r -p "Press Return to close. "
+  exit 1
+fi
+
+if [ ! -d functions/node_modules/firebase-functions ]; then
   note "Preparing the server-side functions…"
+  rm -rf functions/node_modules
   npm --prefix functions install --no-audit --no-fund >/dev/null 2>&1
 fi
+
 note "Building the functions…"
-npm --prefix functions run build >/dev/null 2>&1 || note "(functions build skipped)"
+if ! npm --prefix functions run build > .local-functions-build.log 2>&1; then
+  say "The server-side functions did not compile"
+  echo "Budget approval and the workbook import will not work until they do."
+  echo "What the compiler said:"
+  echo
+  tail -15 .local-functions-build.log | sed 's/^/    /'
+  echo
+  echo "Everything else still runs. Continuing."
+  echo; read -r -p "Press Return to carry on. "
+fi
 
 # --------------------------------------------------------------------------
 # Local configuration
@@ -167,10 +199,24 @@ npm run dev > .local-app.log 2>&1 &
 
 # Wait for the dev server rather than guessing at a delay — opening the browser
 # too early shows a connection error and teaches people to distrust it.
+app_up=no
 for _ in $(seq 1 90); do
-  if curl -sS -o /dev/null http://127.0.0.1:3000 2>/dev/null; then break; fi
+  if curl -sS -o /dev/null http://127.0.0.1:3000 2>/dev/null; then app_up=yes; break; fi
   sleep 1
 done
+
+# Saying "Ready" over a dead application is how somebody ends up staring at a
+# browser error believing the fault is theirs.
+if [ "$app_up" = "no" ]; then
+  say "The application did not start"
+  echo "The last few lines of its log say why:"
+  echo
+  tail -12 .local-app.log 2>/dev/null | sed 's/^/    /'
+  echo
+  echo "The local database is running, so this is the application alone."
+  echo; read -r -p "Press Return to close. "
+  stop
+fi
 
 say "Ready"
 cat <<'READY'
