@@ -16,24 +16,33 @@
  * and well inside Spark's daily read quota.
  */
 
-import { getDocs, onSnapshot, query, where, type Firestore } from 'firebase/firestore';
+import { getDoc, getDocs, onSnapshot, query, where, type Firestore } from 'firebase/firestore';
 
 import * as paths from './paths';
 import { rollupProject } from '../../domain/rollup';
-import type { ProjectRollup } from '../../domain/types';
+import { DEFAULT_PROJECT_SETTINGS, type ProjectRollup } from '../../domain/types';
 
 async function loadProjectFinancials(db: Firestore, projectId: string) {
-  const [items, subEvents, commissions, commitments, transactions] = await Promise.all([
-    getDocs(paths.costItems(db, projectId)),
-    getDocs(paths.subEvents(db, projectId)),
-    getDocs(paths.commissions(db, projectId)),
-    getDocs(query(paths.commitments(db), where('projectId', '==', projectId))),
-    getDocs(query(paths.transactions(db), where('projectId', '==', projectId))),
-  ]);
+  const [project, items, subEvents, categories, commissions, commitments, transactions] =
+    await Promise.all([
+      getDoc(paths.projectDoc(db, projectId)),
+      getDocs(paths.costItems(db, projectId)),
+      getDocs(paths.subEvents(db, projectId)),
+      getDocs(paths.categories(db, projectId)),
+      getDocs(paths.commissions(db, projectId)),
+      getDocs(query(paths.commitments(db), where('projectId', '==', projectId))),
+      getDocs(query(paths.transactions(db), where('projectId', '==', projectId))),
+    ]);
 
   return {
     costItems: items.docs.map((d) => d.data()),
     subEvents: subEvents.docs.map((d) => d.data()),
+    // Categories and settings both feed the contingency base. Loading them is
+    // not optional: without them every project silently reverts to the
+    // defaults, and a project that deliberately excludes Creative would show a
+    // contingency — and therefore a revenue — it does not have.
+    categories: categories.docs.map((d) => d.data()),
+    settings: project.data()?.settings ?? DEFAULT_PROJECT_SETTINGS,
     commissions: commissions.docs.map((d) => d.data()),
     commitments: commitments.docs.map((d) => d.data()),
     transactions: transactions.docs.map((d) => d.data()),
@@ -72,6 +81,8 @@ export function watchProjectRollup(
   const unsubscribes = [
     onSnapshot(paths.costItems(db, projectId), refresh),
     onSnapshot(paths.subEvents(db, projectId), refresh),
+    onSnapshot(paths.categories(db, projectId), refresh),
+    onSnapshot(paths.projectDoc(db, projectId), refresh),
     onSnapshot(paths.commissions(db, projectId), refresh),
     onSnapshot(query(paths.commitments(db), where('projectId', '==', projectId)), refresh),
     onSnapshot(query(paths.transactions(db), where('projectId', '==', projectId)), refresh),

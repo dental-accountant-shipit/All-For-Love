@@ -19,12 +19,17 @@ import { logger } from 'firebase-functions';
 
 import { rollupProject } from '../../src/domain/rollup';
 import { forecastCostItem } from '../../src/domain/forecast';
-import type {
-  Commission,
-  Commitment,
-  CostItem,
-  SubEvent,
-  Transaction,
+import { validatePlan, type ImportPlan } from '../../src/domain/import/plan';
+import { materialise, totalsAgree } from '../../src/domain/import/materialise';
+import {
+  DEFAULT_PROJECT_SETTINGS,
+  type Category,
+  type Commission,
+  type Commitment,
+  type CostItem,
+  type ProjectSettings,
+  type SubEvent,
+  type Transaction,
 } from '../../src/domain/types';
 
 initializeApp();
@@ -37,13 +42,16 @@ const REGION = 'europe-west2';
 // ---------------------------------------------------------------------------
 
 async function loadProject(projectId: string) {
-  const [items, subEvents, commissions, commitments, transactions] = await Promise.all([
-    db.collection(`projects/${projectId}/costItems`).get(),
-    db.collection(`projects/${projectId}/subEvents`).get(),
-    db.collection(`projects/${projectId}/commissions`).get(),
-    db.collection('commitments').where('projectId', '==', projectId).get(),
-    db.collection('transactions').where('projectId', '==', projectId).get(),
-  ]);
+  const [project, items, subEvents, categories, commissions, commitments, transactions] =
+    await Promise.all([
+      db.doc(`projects/${projectId}`).get(),
+      db.collection(`projects/${projectId}/costItems`).get(),
+      db.collection(`projects/${projectId}/subEvents`).get(),
+      db.collection(`projects/${projectId}/categories`).get(),
+      db.collection(`projects/${projectId}/commissions`).get(),
+      db.collection('commitments').where('projectId', '==', projectId).get(),
+      db.collection('transactions').where('projectId', '==', projectId).get(),
+    ]);
 
   const withId = <T>(d: FirebaseFirestore.QueryDocumentSnapshot): T =>
     ({ ...d.data(), id: d.id }) as T;
@@ -51,6 +59,11 @@ async function loadProject(projectId: string) {
   return {
     costItems: items.docs.map((d) => withId<CostItem>(d)),
     subEvents: subEvents.docs.map((d) => withId<SubEvent>(d)),
+    // The contingency base depends on both of these. The browser path loads
+    // them too; the two must agree exactly, or a figure would change the
+    // moment Blaze was switched on.
+    categories: categories.docs.map((d) => withId<Category>(d)),
+    settings: (project.data()?.settings as ProjectSettings) ?? DEFAULT_PROJECT_SETTINGS,
     commissions: commissions.docs.map((d) => withId<Commission>(d)),
     commitments: commitments.docs.map((d) => withId<Commitment>(d)),
     transactions: transactions.docs.map((d) => withId<Transaction>(d)),
@@ -217,6 +230,8 @@ export const approveBudgetVersion = onCall(
     const batch = db.batch();
     let budgetCost = 0;
     let clientPrice = 0;
+    let budgetCostKnown = true;
+    let linesWithoutBudget = 0;
 
     for (const docSnap of itemsSnap.docs) {
       const item = { ...docSnap.data(), id: docSnap.id } as CostItem;
@@ -225,7 +240,15 @@ export const approveBudgetVersion = onCall(
       if (item.origin === 'extra' && item.extraStatus !== 'approved') continue;
 
       const values = item.draft;
-      budgetCost += values.budgetCost;
+      // A line with no recorded budget does not contribute a zero. Summing
+      // null as zero is how a project with no budget at all comes to report
+      // that it met one.
+      if (values.budgetCost === null) {
+        budgetCostKnown = false;
+        linesWithoutBudget += 1;
+      } else {
+        budgetCost += values.budgetCost;
+      }
       clientPrice += values.clientPrice;
 
       batch.set(db.doc(`projects/${projectId}/budgetVersions/${versionId}/lines/${item.id}`), {
@@ -258,7 +281,7 @@ export const approveBudgetVersion = onCall(
       approvedBy: uid,
       approvedAt: at,
       note: note ?? null,
-      totals: { budgetCost, clientPrice },
+      totals: { budgetCost, budgetCostKnown, linesWithoutBudget, clientPrice },
     });
 
     if (previousApprovedId && previousApprovedId !== versionId) {
@@ -281,7 +304,7 @@ export const approveBudgetVersion = onCall(
       by: uid,
       at,
       note: note ?? null,
-      totals: { budgetCost, clientPrice },
+      totals: { budgetCost, budgetCostKnown, linesWithoutBudget, clientPrice },
       createdAt: FieldValue.serverTimestamp(),
     });
 
@@ -289,5 +312,276 @@ export const approveBudgetVersion = onCall(
     await recomputeProject(projectId);
 
     return { versionNo };
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Admin Import
+// ---------------------------------------------------------------------------
+
+/**
+ * Write a reviewed import plan.
+ *
+ * The one operation that creates hundreds of records at once, so it is the one
+ * with the most said no to it:
+ *
+ *   - Only the `admin` role may call it, and `admin` can do nothing else. It
+ *     cannot edit a budget, approve one, or record a cost. Historical loading
+ *     is a job, not a rank.
+ *   - The plan's money is recomputed here from its raw per-unit cell values
+ *     before anything is written. The browser's figures are a preview. If the
+ *     two disagree the import is refused rather than reconciled, because a
+ *     reviewer approved a set of numbers and those are the numbers that should
+ *     land.
+ *   - Everything lands under one `importBatches` document, so a bad run is one
+ *     call to undo rather than an afternoon of archaeology.
+ *
+ * What it deliberately does NOT do: set a budgeted cost. Imported lines carry
+ * budget null — never budget equal to actual, which would report every line at
+ * a variance of zero against a budget nobody ever set.
+ */
+export const adminImportProject = onCall(
+  { region: REGION, memory: '512MiB', timeoutSeconds: 300 },
+  async (request): Promise<{ projectId: string; importBatchId: string; counts: Counts }> => {
+    if (request.auth?.token?.role !== 'admin') {
+      throw new HttpsError(
+        'permission-denied',
+        'Historical import is restricted to the administrator role.',
+      );
+    }
+
+    const plan = (request.data as { plan?: ImportPlan }).plan;
+    if (!plan || typeof plan !== 'object') {
+      throw new HttpsError('invalid-argument', 'No import plan was supplied.');
+    }
+
+    const problems = validatePlan(plan);
+    if (problems.length > 0) {
+      throw new HttpsError('invalid-argument', problems.map((p) => p.message).join(' '));
+    }
+
+    // The browser computed these to show the reviewer. This recomputes them
+    // from the same raw lines and refuses to proceed if they have moved.
+    if (!totalsAgree(plan)) {
+      throw new HttpsError(
+        'failed-precondition',
+        'The plan no longer adds up to the figures that were reviewed. Rebuild the preview and try again.',
+      );
+    }
+
+    const uid = request.auth!.uid;
+    const at = new Date().toISOString();
+    const projectRef = db.collection('projects').doc();
+    const projectId = projectRef.id;
+    const batchRef = db.collection('importBatches').doc();
+    const importBatchId = batchRef.id;
+    const versionId = `${importBatchId}_v`;
+
+    const categoryIds = new Map(
+      plan.categories.map((c) => [c.key, `${importBatchId}_c${c.key}`.slice(0, 120)]),
+    );
+
+    const built = materialise(plan, {
+      projectId,
+      subEventId: 'main',
+      importBatchId,
+      importedBy: uid,
+      at,
+      versionId,
+      versionNo: 1,
+      categoryId: (key) => categoryIds.get(key) ?? key,
+      costItemId: (line) => `r${line.sourceRow}`,
+      transactionId: (line) => `${importBatchId}_r${line.sourceRow}`,
+    });
+
+    const provenance = {
+      imported: true as const,
+      sourceSystem: 'excel_workbook' as const,
+      sourceFilename: plan.sourceFilename,
+      sourceReference: plan.sheetName,
+      originalVersionRef: plan.originalVersionRef,
+      originalApprovalDate: null,
+      importedAt: at,
+      importedBy: uid,
+      importBatchId,
+    };
+
+    const audit = { createdAt: at, createdBy: uid, updatedAt: at, updatedBy: uid };
+
+    const writer = db.bulkWriter();
+
+    writer.set(projectRef, {
+      name: plan.projectName,
+      clientName: plan.clientName,
+      eventType: null,
+      venue: null,
+      eventDate: null,
+      // A historical import is a finished job, not a live one.
+      status: 'completed',
+      baseCurrency: 'GBP',
+      subEventMode: 'single',
+      settings: DEFAULT_PROJECT_SETTINGS,
+      originalApprovedVersionId: versionId,
+      currentApprovedVersionId: versionId,
+      openDraftVersionId: null,
+      rollup: {},
+      import: provenance,
+      audit,
+    });
+
+    // The imported figures are recorded as an approved version so the project
+    // has a history from its first day, and so nothing can quietly edit what
+    // was imported without leaving a revision behind.
+    writer.set(projectRef.collection('budgetVersions').doc(versionId), {
+      projectId,
+      versionNo: 1,
+      status: 'approved',
+      label: `Imported from ${plan.sourceFilename}`,
+      note: plan.originalVersionRef
+        ? `Original workbook version ${plan.originalVersionRef}.`
+        : null,
+      approvedAt: at,
+      approvedBy: uid,
+      supersededAt: null,
+      import: provenance,
+      audit,
+    });
+
+    writer.set(projectRef.collection('subEvents').doc('main'), stripId(built.subEvent));
+    for (const category of built.categories) {
+      writer.set(projectRef.collection('categories').doc(category.id), stripId(category));
+    }
+    for (const item of built.costItems) {
+      writer.set(projectRef.collection('costItems').doc(item.id), stripId(item));
+    }
+    for (const transaction of built.transactions) {
+      writer.set(db.collection('transactions').doc(transaction.id), stripId(transaction));
+    }
+
+    const counts: Counts = {
+      categories: built.categories.length,
+      costItems: built.costItems.length,
+      transactions: built.transactions.length,
+      warnings: plan.warnings.length,
+    };
+
+    writer.set(batchRef, {
+      projectId,
+      projectName: plan.projectName,
+      sourceFilename: plan.sourceFilename,
+      sheetName: plan.sheetName,
+      originalVersionRef: plan.originalVersionRef,
+      importedAt: at,
+      importedBy: uid,
+      counts,
+      // The reviewed figures, kept so a stored project can always be compared
+      // with what the import said it would produce.
+      plannedTotals: plan.totals,
+      workbookTotals: plan.workbookTotals,
+      warnings: plan.warnings,
+      reversedAt: null,
+      reversedBy: null,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    await writer.close();
+    await recomputeProject(projectId);
+
+    logger.info(`Imported ${plan.projectName}`, { projectId, importBatchId, ...counts });
+    return { projectId, importBatchId, counts };
+  },
+);
+
+interface Counts {
+  categories: number;
+  costItems: number;
+  transactions: number;
+  warnings: number;
+}
+
+/** Documents do not store the ID they are keyed by. */
+function stripId<T extends { id: string }>(model: T): Omit<T, 'id'> {
+  const { id: _ignored, ...rest } = model;
+  return rest;
+}
+
+/**
+ * Undo an import.
+ *
+ * Reversibility is what makes a restricted import pathway safe to use rather
+ * than something everyone is afraid to touch. Every record from a run carries
+ * the same `importBatchId`, so this is a query rather than a reconstruction.
+ *
+ * It refuses once the project has been worked on. Deleting a project that
+ * somebody has since recorded real costs against would destroy live data to
+ * tidy up an old mistake, which is the wrong trade every time.
+ */
+export const adminReverseImport = onCall(
+  { region: REGION, memory: '512MiB', timeoutSeconds: 300 },
+  async (request): Promise<{ deleted: number }> => {
+    if (request.auth?.token?.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Reversing an import is restricted.');
+    }
+
+    const { importBatchId } = request.data as { importBatchId?: string };
+    if (!importBatchId) throw new HttpsError('invalid-argument', 'importBatchId is required.');
+
+    const batchRef = db.doc(`importBatches/${importBatchId}`);
+    const batchSnap = await batchRef.get();
+    if (!batchSnap.exists) throw new HttpsError('not-found', 'No such import.');
+    if (batchSnap.data()!.reversedAt) {
+      throw new HttpsError('failed-precondition', 'That import has already been reversed.');
+    }
+
+    const projectId = batchSnap.data()!.projectId as string;
+
+    const [commitments, laterTransactions, versions] = await Promise.all([
+      db.collection('commitments').where('projectId', '==', projectId).limit(1).get(),
+      db
+        .collection('transactions')
+        .where('projectId', '==', projectId)
+        .where('source', '!=', 'import')
+        .limit(1)
+        .get(),
+      db.collection(`projects/${projectId}/budgetVersions`).get(),
+    ]);
+
+    if (!commitments.empty || !laterTransactions.empty || versions.size > 1) {
+      throw new HttpsError(
+        'failed-precondition',
+        'This project has been worked on since it was imported, so it will not be deleted automatically. Remove it by hand if that is really what you want.',
+      );
+    }
+
+    const writer = db.bulkWriter();
+    let deleted = 0;
+
+    const transactions = await db
+      .collection('transactions')
+      .where('projectId', '==', projectId)
+      .get();
+    for (const doc of transactions.docs) {
+      writer.delete(doc.ref);
+      deleted += 1;
+    }
+
+    for (const sub of ['costItems', 'categories', 'subEvents', 'budgetVersions', 'commissions']) {
+      const snap = await db.collection(`projects/${projectId}/${sub}`).get();
+      for (const doc of snap.docs) {
+        writer.delete(doc.ref);
+        deleted += 1;
+      }
+    }
+
+    writer.delete(db.doc(`projects/${projectId}`));
+    deleted += 1;
+
+    // The batch record itself stays, marked reversed. An import that happened
+    // and was undone is part of the history of the system.
+    writer.update(batchRef, { reversedAt: new Date().toISOString(), reversedBy: request.auth!.uid });
+
+    await writer.close();
+    logger.info(`Reversed import ${importBatchId}`, { projectId, deleted });
+    return { deleted };
   },
 );

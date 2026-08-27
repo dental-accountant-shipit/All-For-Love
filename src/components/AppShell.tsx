@@ -16,7 +16,7 @@ import { ROLE_LABELS } from '../lib/auth/roles';
 import { missingFirebaseConfig } from '../lib/firestore/client';
 
 export default function AppShell({ children }: { children: ReactNode }) {
-  const { user, role, roleMissing, signOut } = useAuth();
+  const { user, role, roleMissing, signOut, can } = useAuth();
   const pathname = useRoutePath();
 
   // Better than a blank screen and a console message: say exactly what is
@@ -93,6 +93,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <Link href="/suppliers" style={pathname === '/suppliers' ? S.on : undefined}>
             Suppliers
           </Link>
+          {/* The only screen the administrator role can reach, and the only
+              role that can reach it. Hidden from everyone else rather than
+              shown and refused. */}
+          {can('adminImport') ? (
+            <Link href="/admin/import" style={pathname === '/admin/import' ? S.on : undefined}>
+              Import
+            </Link>
+          ) : null}
         </nav>
         <span style={S.role}>{role ? ROLE_LABELS[role] : ''}</span>
         <button type="button" onClick={() => void signOut()} style={S.link}>

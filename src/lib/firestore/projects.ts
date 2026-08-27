@@ -13,6 +13,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  updateDoc,
   where,
   writeBatch,
   type Firestore,
@@ -21,6 +22,7 @@ import {
 import * as paths from './paths';
 import { keyBetween } from './sortKey';
 import {
+  DEFAULT_INCLUDE_IN_CONTINGENCY_BASE,
   DEFAULT_PROJECT_SETTINGS,
   type Audit,
   type Category,
@@ -65,6 +67,7 @@ const EMPTY_ROLLUP = {
   proposedExtrasRevenue: 0,
   proposedExtrasCost: 0,
   proposedExtrasCostKnown: true,
+  proposedExtrasActualCost: 0,
   lineCount: 0,
   linesOverBudget: 0,
   recomputedAt: new Date(0).toISOString(),
@@ -114,6 +117,7 @@ export async function createProject(
     projectId: projectRef.id,
     name: 'General',
     sortKey: keyBetween(null, null),
+    includeInContingencyBase: DEFAULT_INCLUDE_IN_CONTINGENCY_BASE,
     audit,
   };
   batch.set(categoryRef, { ...category, id: categoryRef.id });
@@ -138,7 +142,7 @@ export async function createProject(
       recordedBy: null,
       recordedAt: null,
     },
-    totals: { budgetCost: 0, clientPrice: 0 },
+    totals: { budgetCost: 0, budgetCostKnown: true, linesWithoutBudget: 0, clientPrice: 0 },
     audit,
   });
 
@@ -213,6 +217,7 @@ export async function addCategory(
   uid: string,
   projectId: string,
   name: string,
+  includeInContingencyBase: boolean = DEFAULT_INCLUDE_IN_CONTINGENCY_BASE,
 ): Promise<string> {
   const existing = await getDocs(query(paths.categories(db, projectId), orderBy('sortKey')));
   const last = existing.docs.at(-1)?.data().sortKey ?? null;
@@ -223,8 +228,29 @@ export async function addCategory(
     projectId,
     name,
     sortKey: keyBetween(last, null),
+    includeInContingencyBase,
     audit: newAudit(uid),
   });
   await batch.commit();
   return ref.id;
+}
+
+/**
+ * Take a category in or out of the contingency base.
+ *
+ * This changes what the client is charged, so it belongs to whoever may edit a
+ * budget rather than to whoever may rename things. The rules enforce that; this
+ * is only the call.
+ */
+export async function setCategoryContingencyBase(
+  db: Firestore,
+  uid: string,
+  projectId: string,
+  categoryId: string,
+  includeInContingencyBase: boolean,
+): Promise<void> {
+  await updateDoc(doc(paths.categories(db, projectId), categoryId), {
+    includeInContingencyBase,
+    ...touch(uid),
+  });
 }

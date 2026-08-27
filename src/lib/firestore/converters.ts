@@ -19,6 +19,9 @@ import {
   type WithFieldValue,
 } from 'firebase/firestore';
 
+import {
+  DEFAULT_INCLUDE_IN_CONTINGENCY_BASE,
+} from '../../domain/types';
 import type {
   BudgetVersion,
   BudgetVersionLine,
@@ -54,6 +57,16 @@ function toFirestore<T extends { id?: string }>(model: WithFieldValue<T>): Docum
   return rest;
 }
 
+const base = {
+  toFirestore(model: WithFieldValue<Category>): DocumentData {
+    return toFirestore(model as WithFieldValue<Category & { id?: string }>);
+  },
+  fromFirestore(snapshot: QueryDocumentSnapshot, options?: SnapshotOptions): Category {
+    const data = fromFirestore<Record<string, unknown>>(snapshot.data(options));
+    return { ...data, id: snapshot.id } as Category;
+  },
+};
+
 function converter<T extends { id: string }>(): FirestoreDataConverter<T> {
   return {
     toFirestore(model: WithFieldValue<T>): DocumentData {
@@ -68,7 +81,24 @@ function converter<T extends { id: string }>(): FirestoreDataConverter<T> {
 
 export const projectConverter = converter<Project>();
 export const subEventConverter = converter<SubEvent>();
-export const categoryConverter = converter<Category>();
+
+/**
+ * Categories carry one default. `includeInContingencyBase` was added after the
+ * first documents were written, and a category document saved without it means
+ * "nobody has expressed a view", which is the same as included. Filling it in
+ * here means the domain never has to reason about a missing field.
+ */
+export const categoryConverter: FirestoreDataConverter<Category> = {
+  toFirestore: base.toFirestore,
+  fromFirestore(snapshot, options) {
+    const category = base.fromFirestore(snapshot, options);
+    return {
+      ...category,
+      includeInContingencyBase:
+        category.includeInContingencyBase ?? DEFAULT_INCLUDE_IN_CONTINGENCY_BASE,
+    };
+  },
+};
 export const costItemConverter = converter<CostItem>();
 export const budgetVersionConverter = converter<BudgetVersion>();
 export const budgetVersionLineConverter = converter<BudgetVersionLine>();

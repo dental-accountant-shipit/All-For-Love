@@ -33,6 +33,7 @@ service cloud.firestore {
     function isProducer()  { return signedIn() && role() == 'producer'; }
     function isFinance()   { return signedIn() && role() == 'finance';  }
     function isViewer()    { return signedIn() && role() == 'viewer';   }
+    function isAdmin()     { return signedIn() && role() == 'admin';    }
 
     // Everyone who may see a project at all.
     function isStaff() {
@@ -234,8 +235,14 @@ service cloud.firestore {
 
     // Import batches are created by the Admin Import function and read by the
     // Admin screen so a run can be reviewed and rolled back.
+    //
+    // Write is denied to everyone, administrators included. The record of what
+    // an import did is written by the function that did it, using the Admin
+    // SDK, and there is no client path to editing it afterwards — a reversible
+    // import is only worth anything if the record of the run cannot be edited
+    // by whoever is undoing it.
     match /importBatches/{batchId} {
-      allow read: if isDirector();
+      allow read: if isDirector() || isAdmin();
       allow write: if false;
     }
 

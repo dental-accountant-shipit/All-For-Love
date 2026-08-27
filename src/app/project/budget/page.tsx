@@ -64,9 +64,10 @@ function Budget({ project }: { project: Project }) {
     const names = new Map(categories.map((c) => [c.id, c.name]));
     const order = new Map(categories.map((c, i) => [c.id, i]));
 
-    // Contingency is derived here exactly as the rollup derives it, so the
-    // figure on the screen and the figure in the database are one calculation.
-    const resolved = applyPercentageLines(items, project.settings);
+    // Contingency is derived here exactly as the rollup derives it — same
+    // function, same settings, same categories — so the figure on the screen
+    // and the figure in the database are one calculation, not two that agree.
+    const resolved = applyPercentageLines(items, project.settings, categories);
 
     return resolved
       .filter((i) => (multi && activeSubEvent ? i.subEventId === activeSubEvent : true))
@@ -83,6 +84,9 @@ function Budget({ project }: { project: Project }) {
         values: i.draft,
       }));
   }, [items, categories, multi, activeSubEvent, project.settings]);
+  // `categories` is already a dependency — it now feeds the contingency base
+  // as well as the names, so a category toggled out of the base re-renders the
+  // grid with the new figure immediately.
 
   if (!items) return <p style={{ color: '#666' }}>Loading budget…</p>;
   if (!user) return null;

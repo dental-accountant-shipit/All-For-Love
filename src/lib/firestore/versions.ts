@@ -99,7 +99,7 @@ export async function startRevision(
       recordedBy: null,
       recordedAt: null,
     },
-    totals: { budgetCost: 0, clientPrice: 0 },
+    totals: { budgetCost: 0, budgetCostKnown: true, linesWithoutBudget: 0, clientPrice: 0 },
     audit: newAudit(uid),
   });
 

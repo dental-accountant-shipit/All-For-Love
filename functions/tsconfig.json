@@ -5,7 +5,12 @@
     "lib": ["ES2022"],
     "moduleResolution": "node",
     "outDir": "lib",
-    "rootDir": ".",
+    // No rootDir. The functions compile the pure domain engine from ../src
+    // alongside their own source — that is the whole point, one implementation
+    // of the arithmetic rather than a server copy that drifts — and pinning
+    // rootDir to this folder makes those files an error. TypeScript infers the
+    // repository root instead, so the output lands at lib/functions/src and
+    // lib/src, which is what `main` points at.
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true

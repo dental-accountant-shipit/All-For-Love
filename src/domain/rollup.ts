@@ -17,6 +17,7 @@ import { forecastCostItem, budgetForForecast, isOverBudget } from './forecast';
 import { calculateCommission, isAgreed, isProposedExtra, revenueBreakdown } from './revenue';
 import {
   DEFAULT_PROJECT_SETTINGS,
+  type Category,
   type Commission,
   type Commitment,
   type CostItem,
@@ -41,24 +42,40 @@ export interface RollupInput {
  * compound: percentage lines never form part of another percentage line's
  * base.
  *
- * Whether approved optional extras form part of the base is a project setting,
- * `applyContingencyToApprovedExtras`, defaulting to NO. An extra is negotiated
- * and priced at the time with its own margin, so adding a buffer on top
- * re-prices a change the client has already agreed and makes the contingency
- * figure move whenever an extra is approved. Projects quoted the other way
- * round turn the setting on.
+ * Three things keep a line out of the base:
  *
- * The reference workbook gets this wrong in two other ways — its contingency
- * omits one whole category from the base, and its label says 6% while the cell
- * says 5.25%. Both are why this is computed rather than typed.
+ *   1. Its category says so — `category.includeInContingencyBase`. The
+ *      reference workbook excludes Creative, and All for Love keep that, but
+ *      it is recorded as a decision about a category rather than inferred from
+ *      the word "Creative". Categories not supplied are treated as included,
+ *      so a caller that has not loaded them cannot silently shrink the base.
+ *   2. It is an optional extra, and the project setting
+ *      `applyContingencyToApprovedExtras` is off (the default) or the extra is
+ *      not approved. An extra is negotiated and priced at the time with its
+ *      own margin, so adding a buffer on top re-prices a change the client has
+ *      already agreed.
+ *   3. The client value has been withdrawn.
+ *
+ * The reference workbook gets two further things wrong — its label says 6%
+ * while the cell says 5.25%, and its base misses a category by accident rather
+ * than by decision. Both are why this is computed rather than typed.
  */
 export function applyPercentageLines(
   items: CostItem[],
   settings: ProjectSettings = DEFAULT_PROJECT_SETTINGS,
+  categories: Array<Pick<Category, 'id' | 'includeInContingencyBase'>> = [],
 ): CostItem[] {
+  // Absence means "no opinion", not "excluded". A caller that forgot to load
+  // categories gets the full base, which is wrong in the safe direction —
+  // visibly too much contingency, rather than a quietly smaller one.
+  const excluded = new Set(
+    categories.filter((c) => c.includeInContingencyBase === false).map((c) => c.id),
+  );
+
   const baseBySubEvent = new Map<string, Pence>();
   for (const item of items) {
     if (item.mode === 'percentage') continue;
+    if (excluded.has(item.categoryId)) continue;
     if (item.origin === 'extra') {
       if (!settings.applyContingencyToApprovedExtras) continue;
       if (item.extraStatus !== 'approved') continue;
@@ -102,6 +119,7 @@ function emptyFinancials(): Omit<FinancialRollup, 'recomputedAt' | 'recomputeSeq
     proposedExtrasRevenue: 0,
     proposedExtrasCost: 0,
     proposedExtrasCostKnown: true,
+    proposedExtrasActualCost: 0,
     lineCount: 0,
     linesOverBudget: 0,
   };
@@ -122,7 +140,21 @@ export function rollupFinancials(
   const revenue = revenueBreakdown(input.costItems);
 
   for (const item of input.costItems) {
-    if (isProposedExtra(item) || !isAgreed(item)) continue;
+    if (isProposedExtra(item) || !isAgreed(item)) {
+      // Not part of the agreed position — but money spent on it is still money
+      // spent. An imported historical extra typically has a real supplier cost
+      // and an unconfirmed selling value, and dropping the cost on the floor
+      // here would make an unrecovered £4,000 disappear from the system
+      // entirely. Reported separately, never blended in.
+      if (isProposedExtra(item)) {
+        totals.proposedExtrasActualCost += forecastCostItem(
+          item,
+          input.commitments,
+          input.transactions,
+        ).actualTotal;
+      }
+      continue;
+    }
 
     const result = forecastCostItem(item, input.commitments, input.transactions);
 
@@ -170,6 +202,11 @@ export function rollupProject(
     subEvents: SubEvent[];
     commissions: Commission[];
     settings?: ProjectSettings;
+    /**
+     * Needed for `includeInContingencyBase`. Omitting them puts every category
+     * in the contingency base — see `applyPercentageLines`.
+     */
+    categories?: Array<Pick<Category, 'id' | 'includeInContingencyBase'>>;
   },
   at: string,
   seq: number,
@@ -178,7 +215,11 @@ export function rollupProject(
   // project and sub-event alike — reads the same resolved values.
   input = {
     ...input,
-    costItems: applyPercentageLines(input.costItems, input.settings ?? DEFAULT_PROJECT_SETTINGS),
+    costItems: applyPercentageLines(
+      input.costItems,
+      input.settings ?? DEFAULT_PROJECT_SETTINGS,
+      input.categories ?? [],
+    ),
   };
 
   const project = rollupFinancials(input, at, seq);
@@ -246,6 +287,8 @@ export function subEventTotalsReconcile(rollup: ProjectRollup): boolean {
     'forecastCost',
     'currentAgreedClientRevenue',
     'forecastProfit',
+    'proposedExtrasRevenue',
+    'proposedExtrasActualCost',
   ];
   return keys.every((k) => {
     const total = rollup.subEvents.reduce((a, se) => a + (se[k] as Pence), 0);

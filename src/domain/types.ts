@@ -145,8 +145,26 @@ export interface Category {
   projectId: string;
   name: string;
   sortKey: SortKey;
+  /**
+   * Whether this category's client value forms part of the base a percentage
+   * line (contingency) is calculated on.
+   *
+   * A setting rather than a rule about names. The reference workbook keeps
+   * Creative out of its contingency base, and All for Love want that behaviour
+   * kept — but a system that decided it by looking for the word "Creative"
+   * would silently change a project's revenue the day somebody renamed a
+   * category to "Creative & Styling". So the intent is stored on the category,
+   * and renaming one is only ever renaming one.
+   *
+   * Defaults to true for a new category. The importer sets it false for
+   * Creative and for Optional Extras.
+   */
+  includeInContingencyBase: boolean;
   audit: Audit;
 }
+
+/** A new category counts towards contingency unless somebody says otherwise. */
+export const DEFAULT_INCLUDE_IN_CONTINGENCY_BASE = true;
 
 // ---------------------------------------------------------------------------
 // Cost Item — the stable spine
@@ -318,7 +336,19 @@ export interface BudgetVersion {
   clientApproval: ClientApproval;
 
   /** Totals across every sub-event, frozen at approval. */
-  totals: { budgetCost: Pence; clientPrice: Pence };
+  /**
+   * `budgetCost` is the sum of the budgets that WERE recorded. When
+   * `budgetCostKnown` is false some lines had none — an imported historical
+   * project has none at all — and the sum must be displayed as unavailable
+   * rather than as a total. Adding null as zero here would quietly report a
+   * £0 budget for a project whose budget was simply never written down.
+   */
+  totals: {
+    budgetCost: Pence;
+    budgetCostKnown: boolean;
+    linesWithoutBudget: number;
+    clientPrice: Pence;
+  };
 
   import?: ImportProvenance;
   audit: Audit;
@@ -527,6 +557,16 @@ export interface FinancialRollup {
    * dashboard would offer "£33,958 revenue, £0 cost" as an opportunity.
    */
   proposedExtrasCostKnown: boolean;
+  /**
+   * Money already spent on extras the client has not agreed to pay for.
+   *
+   * Kept separate from `actualTotal` because it is not part of the agreed
+   * position — but it is real money and it must not vanish. On an imported
+   * historical project this is the honest reading of the workbook's optional
+   * extras: the cost happened, the revenue is unconfirmed. If it stays
+   * unconfirmed, this figure is the loss.
+   */
+  proposedExtrasActualCost: Pence;
 
   lineCount: number;
   linesOverBudget: number;
