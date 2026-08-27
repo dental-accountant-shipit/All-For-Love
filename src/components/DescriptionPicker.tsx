@@ -43,6 +43,10 @@ export default function DescriptionPicker({
   // -1 means "nothing selected — my typing stands".
   const [selected, setSelected] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Escape and choosing both remove the field, which fires blur, which would
+  // otherwise commit the very text the user just asked to discard. A ref
+  // rather than state: blur happens in the same tick, before a re-render.
+  const settled = useRef(false);
 
   const matches = useMemo(
     () => searchCatalogue(entries, value, { currentCategory, limit: 7 }),
@@ -59,6 +63,7 @@ export default function DescriptionPicker({
   useEffect(() => setSelected(-1), [value]);
 
   const choose = (entry: CatalogueEntry) => {
+    settled.current = true;
     onChoose(entry);
   };
 
@@ -86,6 +91,7 @@ export default function DescriptionPicker({
           }
           if (e.key === 'Enter' || e.key === 'Tab') {
             if (selected >= 0 && matches[selected]) {
+              settled.current = true;
               // Taking a suggestion is a deliberate act, so it consumes the
               // key rather than also moving the cursor on. The next keystroke
               // does that, and by then the row says what was chosen.
@@ -95,18 +101,26 @@ export default function DescriptionPicker({
               return;
             }
             // Nothing selected: let the grid's own key handling take it.
+            settled.current = true;
             onCommit(value);
             return;
           }
           if (e.key === 'Escape') {
             e.preventDefault();
             e.stopPropagation();
+            settled.current = true;
             onCancel();
           }
         }}
         onBlur={() => {
-          // A click on a suggestion blurs the input first. Let that land.
-          window.setTimeout(() => onCommit(value), 120);
+          // A click on a suggestion blurs the input first, so the commit is
+          // deferred to let the choice land. But Escape also blurs, and
+          // committing there would save the text somebody just discarded —
+          // which is how pressing Escape came to write "brid" into a budget.
+          if (settled.current) return;
+          window.setTimeout(() => {
+            if (!settled.current) onCommit(value);
+          }, 120);
         }}
       />
 

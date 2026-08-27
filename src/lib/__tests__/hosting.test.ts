@@ -25,6 +25,7 @@ const firebaseConfig = JSON.parse(readFileSync('firebase.json', 'utf8')) as {
   hosting: {
     cleanUrls?: boolean;
     trailingSlash?: boolean;
+    headers?: Array<{ source: string; headers: Array<{ key: string; value: string }> }>;
     rewrites?: Array<{ source: string; destination: string }>;
   };
 };
@@ -47,6 +48,27 @@ describe('Firebase Hosting can serve what the build produces', () => {
   it('has cleanUrls on, so /projects resolves to projects.html', () => {
     // Without this, every route except "/" silently serves the home page.
     expect(firebaseConfig.hosting.cleanUrls).toBe(true);
+  });
+
+  it('does not let the browser cache the HTML', () => {
+    // Firebase caches HTML for an hour by default. The HTML is what points at
+    // the JavaScript, so for an hour after every deploy people keep loading
+    // the old application and see no change at all — which is exactly what
+    // happened, and looked like the deploy having done nothing.
+    const html = firebaseConfig.hosting.headers?.find((h) => h.source.endsWith('*.html'));
+    const cacheControl = html?.headers.find((h) => h.key === 'Cache-Control')?.value ?? '';
+    expect(cacheControl).toMatch(/no-cache|max-age=0/);
+  });
+
+  it('caches the hashed assets hard, because it safely can', () => {
+    // Their filenames change whenever their contents do, so a long cache is
+    // free — and it is what makes the no-cache HTML cheap: one small
+    // revalidation, everything else straight from disk.
+    const assets = firebaseConfig.hosting.headers?.find((h) =>
+      h.source.includes('_next/static'),
+    );
+    const cacheControl = assets?.headers.find((h) => h.key === 'Cache-Control')?.value ?? '';
+    expect(cacheControl).toContain('immutable');
   });
 
   it('keeps a catch-all rewrite for genuinely unknown paths', () => {
