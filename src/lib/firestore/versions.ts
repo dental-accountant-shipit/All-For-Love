@@ -115,13 +115,31 @@ export async function startRevision(
   return versionRef.id;
 }
 
-/** Abandoning a draft restores the approved values and deletes the draft. */
+/**
+ * Abandoning a draft restores the approved values and deletes the draft.
+ *
+ * It refuses on a budget that has never been approved, because there is
+ * nothing to restore TO. On such a project "abandon" would delete the version
+ * record and leave every line exactly where it was — a project with a budget
+ * in it, no draft, and no way to approve what it contains until somebody
+ * works out that a revision has to be started from nothing. That is a
+ * confusing state to be dropped into by a button labelled Abandon.
+ */
 export async function abandonDraft(
   db: Firestore,
   uid: string,
   projectId: string,
   versionId: string,
 ): Promise<void> {
+  const projectSnap = await getDoc(paths.projectDoc(db, projectId));
+  if (!projectSnap.data()?.currentApprovedVersionId) {
+    throw new Error(
+      'This budget has never been approved, so there is nothing to go back to. ' +
+        'Abandoning would only delete the draft record — the lines would stay ' +
+        'exactly as they are. Delete the lines you do not want instead.',
+    );
+  }
+
   const items = await getDocs(paths.costItems(db, projectId));
   const batch = writeBatch(db);
 

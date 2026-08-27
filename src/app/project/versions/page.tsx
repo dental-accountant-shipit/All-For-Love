@@ -100,7 +100,14 @@ function Versions({ project }: { project: Project }) {
           </button>
         ) : null}
 
-        {draft && can('startRevision') ? (
+        {/*
+          Only offered once there is an approved version to fall back to.
+          On a budget that has never been approved there is nothing to abandon
+          TO: the lines stay put and all that goes is the draft record, which
+          leaves a project that cannot be approved until somebody works out
+          that a revision has to be started from nothing.
+        */}
+        {draft && can('startRevision') && project.currentApprovedVersionId ? (
           <button
             type="button"
             style={btn}
