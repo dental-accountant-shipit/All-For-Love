@@ -41,9 +41,11 @@ export default function DeleteProject({
   const router = useRouter();
 
   const [open, setOpen] = useState(false);
-  const [counts, setCounts] = useState<{ costItems: number; approvedVersions: number } | null>(
-    null,
-  );
+  const [counts, setCounts] = useState<{
+    costItems: number;
+    approvedVersions: number;
+    unknown?: boolean;
+  } | null>(null);
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,10 +77,11 @@ export default function DeleteProject({
           approvedVersions: versions.data().count,
         });
       } catch {
-        // Counting failed, which must not stop somebody clearing up a mistake.
-        // Treating it as "we do not know" is the safe way round: unknown counts
-        // still leave the money figures below, which are what matter.
-        if (!cancelled) setCounts({ costItems: 0, approvedVersions: 0 });
+        // Not knowing must not stop somebody clearing up a mistake — but it
+        // must not make deleting EASIER than knowing. Zeroes would have said
+        // "this project is empty" and waved the confirmation through on the
+        // strength of a query that did not run.
+        if (!cancelled) setCounts({ costItems: 0, approvedVersions: 0, unknown: true });
       }
     })();
     return () => {
@@ -109,6 +112,7 @@ export default function DeleteProject({
   const contents: ProjectContents = {
     costItems: counts.costItems,
     approvedVersions: counts.approvedVersions,
+    countsUnknown: counts.unknown,
     committedTotal: rollup.committedTotal,
     actualTotal: rollup.actualTotal,
     agreedClientRevenue: rollup.currentAgreedClientRevenue,

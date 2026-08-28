@@ -32,6 +32,15 @@ export interface ProjectContents {
   actualTotal: Pence;
   /** What the client agreed to pay. */
   agreedClientRevenue: Pence;
+  /**
+   * True when the line and version counts could not be read.
+   *
+   * The safe direction is to treat not knowing as "there is something here".
+   * The opposite — counting a failed read as zero — would let a project with an
+   * approved budget and no recorded money be deleted without so much as typing
+   * its name, on the strength of a query that did not run.
+   */
+  countsUnknown?: boolean;
 }
 
 /**
@@ -46,6 +55,7 @@ export interface ProjectContents {
  * be ceremony rather than care.
  */
 export function hasRealWork(contents: ProjectContents): boolean {
+  if (contents.countsUnknown) return true;
   return (
     contents.committedTotal > 0 || contents.actualTotal > 0 || contents.approvedVersions > 0
   );
@@ -60,10 +70,12 @@ export function hasRealWork(contents: ProjectContents): boolean {
 export function describeDeletion(contents: ProjectContents): string[] {
   const parts: string[] = [];
 
-  if (contents.costItems > 0) {
+  if (contents.countsUnknown) {
+    parts.push('its budget lines and every version of them — the count could not be read');
+  } else if (contents.costItems > 0) {
     parts.push(`${contents.costItems} budget ${contents.costItems === 1 ? 'line' : 'lines'}`);
   }
-  if (contents.approvedVersions > 0) {
+  if (!contents.countsUnknown && contents.approvedVersions > 0) {
     parts.push(
       `${contents.approvedVersions} approved budget ${
         contents.approvedVersions === 1 ? 'version' : 'versions'

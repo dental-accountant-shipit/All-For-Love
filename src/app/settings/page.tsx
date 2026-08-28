@@ -144,9 +144,11 @@ function ConfirmDelete({
   onCancel: () => void;
   onDeleted: (name: string) => void;
 }) {
-  const [counts, setCounts] = useState<{ costItems: number; approvedVersions: number } | null>(
-    null,
-  );
+  const [counts, setCounts] = useState<{
+    costItems: number;
+    approvedVersions: number;
+    unknown?: boolean;
+  } | null>(null);
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -181,9 +183,11 @@ function ConfirmDelete({
           setCounts({ costItems: items.data().count, approvedVersions: versions.data().count });
         }
       } catch {
-        // Not knowing the counts must not stop somebody clearing up a mistake.
-        // The money figures below are the ones that matter anyway.
-        if (!cancelled) setCounts({ costItems: 0, approvedVersions: 0 });
+        // Not knowing must not stop somebody clearing up a mistake — but it
+        // must not make deleting EASIER than knowing. Zeroes would have said
+        // "this project is empty" and waved the confirmation through on the
+        // strength of a query that did not run.
+        if (!cancelled) setCounts({ costItems: 0, approvedVersions: 0, unknown: true });
       }
     })();
     return () => {
@@ -196,6 +200,7 @@ function ConfirmDelete({
   const contents: ProjectContents = {
     costItems: counts.costItems,
     approvedVersions: counts.approvedVersions,
+    countsUnknown: counts.unknown,
     committedTotal: project.rollup?.committedTotal ?? 0,
     actualTotal: project.rollup?.actualTotal ?? 0,
     agreedClientRevenue: project.rollup?.currentAgreedClientRevenue ?? 0,

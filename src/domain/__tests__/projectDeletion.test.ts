@@ -114,3 +114,27 @@ describe('typing the name back', () => {
     expect(nameMatches(second, second)).toBe(true);
   });
 });
+
+describe('when the counts could not be read', () => {
+  // The safe direction. A failed query must never make deleting easier than a
+  // successful one — which is exactly what happened before: the screen caught
+  // the error, set both counts to zero, and a project with an approved budget
+  // and no recorded money became "empty" and deletable in one click.
+
+  it('is treated as real work, so the name still has to be typed', () => {
+    expect(hasRealWork(contents({ countsUnknown: true }))).toBe(true);
+  });
+
+  it('says so rather than reporting nothing', () => {
+    const said = describeDeletion(contents({ countsUnknown: true }));
+    expect(said[0]).toMatch(/count could not be read/);
+    expect(said).not.toContain('nothing — this project is empty');
+  });
+
+  it('still reports the money, which comes from somewhere else', () => {
+    const said = describeDeletion(
+      contents({ countsUnknown: true, actualTotal: toPence(2_500) }),
+    );
+    expect(said).toContain('£2,500.00 of recorded costs');
+  });
+});

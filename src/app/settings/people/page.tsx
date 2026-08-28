@@ -46,14 +46,22 @@ export default function PeoplePage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
+  const [failed, setFailed] = useState(false);
 
+  // Failing to load is not the same as there being nobody, and the screen must
+  // not say the second when it means the first. It did: a failed call set the
+  // list to empty, and the page then announced "0 accounts · Nobody yet" above
+  // its own error message. That is the same mistake as reporting an unrecorded
+  // budget as zero, which this system refuses to make everywhere else.
   const refresh = useCallback(async () => {
     try {
       setPeople(await listPeople());
+      setFailed(false);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The list of people could not be loaded.');
-      setPeople([]);
+      setFailed(true);
+      setPeople(null);
     }
   }, []);
 
@@ -97,7 +105,11 @@ export default function PeoplePage() {
     <SettingsShell
       title="People"
       meta={
-        people ? `${people.length} ${people.length === 1 ? 'account' : 'accounts'}` : 'Loading…'
+        failed
+          ? undefined
+          : people
+            ? `${people.length} ${people.length === 1 ? 'account' : 'accounts'}`
+            : 'Loading…'
       }
       actions={
           <button
@@ -128,7 +140,7 @@ export default function PeoplePage() {
       {notice ? <p style={S.notice}>{notice}</p> : null}
       {error ? <p style={S.error}>{error}</p> : null}
 
-      {people === null ? (
+      {failed ? null : people === null ? (
         <p style={hint}>Looking up who has access…</p>
       ) : people.length === 0 ? (
         <EmptyState title="Nobody yet">
