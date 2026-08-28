@@ -172,8 +172,17 @@ function Versions({ project }: { project: Project }) {
               </td>
               <td style={td}>{v.status}</td>
               <td style={td}>{v.approvedAt ? v.approvedAt.slice(0, 10) : '—'}</td>
-              <td style={num}>{formatGBP(v.totals.budgetCost)}</td>
-              <td style={num}>{formatGBP(v.totals.clientPrice)}</td>
+              {/* A version written without its totals is a data fault, not a
+                  reason to take the whole application down with an unhandled
+                  exception. It happened: the workbook import left the field
+                  out entirely and this screen went white. Say "unavailable"
+                  and let somebody see the rest of the history. */}
+              <td style={num}>
+                {v.totals ? formatGBP(v.totals.budgetCost) : <em style={missing}>unavailable</em>}
+              </td>
+              <td style={num}>
+                {v.totals ? formatGBP(v.totals.clientPrice) : <em style={missing}>unavailable</em>}
+              </td>
               <td style={td}>
                 <ClientApproval
                   version={v}
@@ -306,6 +315,7 @@ function Diff({ lines }: { lines: DiffLine[] }) {
 }
 
 const bar: React.CSSProperties = { display: 'flex', gap: 12, alignItems: 'baseline', marginBottom: 16 };
+const missing: React.CSSProperties = { fontStyle: 'normal', color: colour.muted };
 const h2: React.CSSProperties = {
   fontFamily: typeToken.serif,
   fontSize: 19,

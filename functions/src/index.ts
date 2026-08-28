@@ -17,6 +17,7 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
 
+import { versionTotals } from '../../src/domain/versionTotals';
 import { rollupProject } from '../../src/domain/rollup';
 import { forecastCostItem } from '../../src/domain/forecast';
 import { validatePlan, type ImportPlan } from '../../src/domain/import/plan';
@@ -228,28 +229,19 @@ export const approveBudgetVersion = onCall(
     const previousApprovedId = project.currentApprovedVersionId as string | null;
 
     const batch = db.batch();
-    let budgetCost = 0;
-    let clientPrice = 0;
-    let budgetCostKnown = true;
-    let linesWithoutBudget = 0;
+    const items = itemsSnap.docs.map(
+      (docSnap) => ({ ...docSnap.data(), id: docSnap.id }) as CostItem,
+    );
+    // One definition of what a version totals, shared with the import. They
+    // used to be two, in two files, with nothing checking they agreed.
+    const { budgetCost, clientPrice, budgetCostKnown, linesWithoutBudget } =
+      versionTotals(items);
 
-    for (const docSnap of itemsSnap.docs) {
-      const item = { ...docSnap.data(), id: docSnap.id } as CostItem;
-
+    for (const item of items) {
       // A proposed extra is not part of the approved budget until it is agreed.
       if (item.origin === 'extra' && item.extraStatus !== 'approved') continue;
 
       const values = item.draft;
-      // A line with no recorded budget does not contribute a zero. Summing
-      // null as zero is how a project with no budget at all comes to report
-      // that it met one.
-      if (values.budgetCost === null) {
-        budgetCostKnown = false;
-        linesWithoutBudget += 1;
-      } else {
-        budgetCost += values.budgetCost;
-      }
-      clientPrice += values.clientPrice;
 
       batch.set(db.doc(`projects/${projectId}/budgetVersions/${versionId}/lines/${item.id}`), {
         id: item.id,
@@ -443,6 +435,13 @@ export const adminImportProject = onCall(
       approvedAt: at,
       approvedBy: uid,
       supersededAt: null,
+      // Totalled with the same function `approveBudgetVersion` uses.
+      //
+      // This was simply left out, and nothing complained: the Admin SDK's
+      // set() takes plain document data, so a required field of BudgetVersion
+      // can go missing with no type error. The Versions screen then read
+      // v.totals.budgetCost off it and the whole application went white.
+      totals: versionTotals(built.costItems),
       import: provenance,
       audit,
     });
