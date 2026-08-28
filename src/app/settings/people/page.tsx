@@ -22,7 +22,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../../lib/auth/AuthProvider';
 import { invitePerson, listPeople, setUserRole, type PersonRow } from '../../../lib/people/manage';
 import { ASSIGNABLE_ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS } from '../../../lib/auth/roles';
-import { alreadyInvited, looksLikeEmail } from '../../../domain/userAdmin';
+import { alreadyInvited, canChangeRole, looksLikeEmail } from '../../../domain/userAdmin';
 import type { Role } from '../../../domain/types';
 import SettingsShell from '../../../components/SettingsNav';
 import EmptyState from '../../../components/EmptyState';
@@ -196,16 +196,13 @@ export default function PeoplePage() {
                 </td>
 
                 <td style={{ ...S.td, textAlign: 'right' }}>
-                  {person.role === null ? null : (
-                    <button
-                      type="button"
-                      style={S.remove}
-                      disabled={busy !== null}
-                      onClick={() => void change(person, null)}
-                    >
-                      {busy === person.uid ? 'Saving…' : 'Remove access'}
-                    </button>
-                  )}
+                  <RemoveAccess
+                    people={people}
+                    actorUid={user.uid}
+                    person={person}
+                    busy={busy}
+                    onRemove={() => void change(person, null)}
+                  />
                 </td>
               </tr>
             ))}
@@ -224,6 +221,39 @@ export default function PeoplePage() {
         entitled to it anyway.
       </p>
     </SettingsShell>
+  );
+}
+
+/**
+ * Remove access, or the reason there is no button.
+ *
+ * The server refuses to remove the last owner, so offering a button that
+ * always fails would be a small lie told once a day. The reason is shown in
+ * its place instead — it is more useful than the button would have been,
+ * because it says what to do about it.
+ */
+function RemoveAccess({
+  people,
+  actorUid,
+  person,
+  busy,
+  onRemove,
+}: {
+  people: PersonRow[];
+  actorUid: string;
+  person: PersonRow;
+  busy: string | null;
+  onRemove: () => void;
+}) {
+  if (person.role === null) return null;
+
+  const decision = canChangeRole(people, actorUid, person.uid, null);
+  if (!decision.allowed) return <span style={S.refusal}>{decision.reason}</span>;
+
+  return (
+    <button type="button" style={S.remove} disabled={busy !== null} onClick={onRemove}>
+      {busy === person.uid ? 'Saving…' : 'Remove access'}
+    </button>
   );
 }
 
@@ -350,6 +380,7 @@ const S: Record<string, React.CSSProperties> = {
   roleNote: { display: 'block', fontSize: 12, color: colour.muted, marginTop: 5, maxWidth: '34ch' },
 
   remove: { ...buttonSecondary, fontSize: 11, padding: '7px 12px' },
+  refusal: { display: 'inline-block', fontSize: 12, color: colour.muted, maxWidth: '32ch', textAlign: 'left' },
 
   notice: { fontSize: 14, marginBottom: 16 },
   error: { fontSize: 13, color: colour.signature, marginBottom: 16 },
