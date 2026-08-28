@@ -8,8 +8,8 @@
  * of permission that could drift from what the server enforces.
  *
  * Internal All for Love staff only. No sign-up, no external identity: accounts
- * are created by an administrator in the Firebase console, and self-registration
- * is turned off there.
+ * are created by the owner on the People screen, and self-registration is turned
+ * off in the Firebase console.
  */
 
 import {

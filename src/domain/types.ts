@@ -51,7 +51,19 @@ export interface Audit {
   updatedBy: string;
 }
 
-export type Role = 'director' | 'producer' | 'finance' | 'viewer' | 'admin';
+/**
+ * Owner sits above director: everything a director does, plus deciding who
+ * else may do what, plus the workbook import. It exists so that being able to
+ * hand out access is a deliberate, separate thing from running events — a
+ * director can build and approve budgets all day and still not be able to make
+ * themselves the owner.
+ *
+ * 'admin' is retired. It existed only to run the import and could not read a
+ * budget, which meant switching roles back and forth to use it. Owner absorbed
+ * it. The value is still accepted so an account that already carries the claim
+ * keeps working until it is changed.
+ */
+export type Role = 'owner' | 'director' | 'producer' | 'finance' | 'viewer' | 'admin';
 
 // ---------------------------------------------------------------------------
 // Project and Sub-event

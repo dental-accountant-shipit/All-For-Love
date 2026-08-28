@@ -108,7 +108,7 @@ export default function SignInPage() {
         </form>
 
         <p style={S.footnote}>
-          Accounts are created by an administrator. There is no self sign-up.
+          Accounts are created by the owner, from inside. There is no self sign-up.
         </p>
 
         {usingEmulators ? (

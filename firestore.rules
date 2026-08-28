@@ -29,6 +29,17 @@ service cloud.firestore {
       return request.auth.token.role;
     }
 
+    // The owner is the person who runs the business. Everything a director may
+    // do, an owner may do, plus granting roles — which happens in a Cloud
+    // Function, not here.
+    //
+    // This is the fix for a real inconsistency: 'admin' was left out of
+    // isStaff() below but given viewProjects in the application's own
+    // permission table. The rules won, as they always do, and the first
+    // imported project was invisible to the only account that could import it.
+    // Rather than widen 'admin' — a role that was never meant to be a person's
+    // everyday login — 'owner' is a proper role that appears in both places.
+    function isOwner()     { return signedIn() && role() == 'owner';    }
     function isDirector()  { return signedIn() && role() == 'director'; }
     function isProducer()  { return signedIn() && role() == 'producer'; }
     function isFinance()   { return signedIn() && role() == 'finance';  }
@@ -37,20 +48,28 @@ service cloud.firestore {
 
     // Everyone who may see a project at all.
     function isStaff() {
-      return signedIn() && role() in ['director', 'producer', 'finance', 'viewer'];
+      return signedIn() && role() in ['owner', 'director', 'producer', 'finance', 'viewer'];
     }
 
     // Everyone who may change budget content.
     function canEditBudget() {
-      return isDirector() || isProducer();
+      return isOwner() || isDirector() || isProducer();
     }
 
     // Everyone who may record money movements.
     function canEditMoney() {
-      return isDirector() || isProducer() || isFinance();
+      return isOwner() || isDirector() || isProducer() || isFinance();
     }
 
-    // NOTE: 'admin' is deliberately absent from every write rule below.
+    // Director-level facts: commission, templates, the import history. An
+    // owner sees these too.
+    function atLeastDirector() {
+      return isOwner() || isDirector();
+    }
+
+    // NOTE: 'admin' is deliberately absent from every write rule below, and is
+    // retired as a role people are given — it survives only so that any claim
+    // already issued keeps working until it is changed to 'owner'.
     // Admin capability lives in Cloud Functions, not in these rules.
 
     // ------------------------------------------------------------- helpers
@@ -207,8 +226,8 @@ service cloud.firestore {
       match /commissions/{commissionId} {
         // Commission is a director-level fact. Producers run projects without
         // seeing what the introducer takes.
-        allow read: if isDirector() || isFinance();
-        allow create, update, delete: if isDirector();
+        allow read: if atLeastDirector() || isFinance();
+        allow create, update, delete: if atLeastDirector();
       }
 
       // ---------------------------------------------------------- activity
@@ -265,7 +284,7 @@ service cloud.firestore {
 
     match /budgetTemplates/{templateId} {
       allow read: if isStaff();
-      allow create, update, delete: if isDirector();
+      allow create, update, delete: if atLeastDirector();
     }
 
     // --------------------------------------------------- integrations, import
@@ -284,7 +303,7 @@ service cloud.firestore {
     // import is only worth anything if the record of the run cannot be edited
     // by whoever is undoing it.
     match /importBatches/{batchId} {
-      allow read: if isDirector() || isAdmin();
+      allow read: if atLeastDirector() || isAdmin();
       allow write: if false;
     }
 

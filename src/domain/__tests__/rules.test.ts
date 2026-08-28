@@ -382,3 +382,73 @@ suite('the line catalogue', () => {
     }
   });
 });
+
+suite('the owner', () => {
+  // This suite exists because of a specific failure: the first project ever
+  // imported was invisible to the account that imported it. `isStaff()` did not
+  // list 'admin', the application's permission table did, and the rules won —
+  // silently, as a permission-denied in a console nobody was reading. The owner
+  // role is the answer, so it gets checked here, where enforcement actually is.
+
+  it('can read a project', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'projects/p1'), { name: 'C & D', clientName: 'C & D' });
+    });
+    await assertSucceeds(getDoc(doc(as('owner'), 'projects/p1')));
+  });
+
+  it('can edit a budget', async () => {
+    await assertSucceeds(setDoc(doc(as('owner'), 'projects/p1/costItems/ci1'), newCostItem()));
+  });
+
+  it('can record money', async () => {
+    await assertSucceeds(
+      setDoc(doc(as('owner'), 'suppliers/s1'), { name: 'Wildflower', active: true, audit: AUDIT }),
+    );
+  });
+
+  it('can see commission, which producers cannot', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'projects/p1/commissions/cm1'), {
+        payeeName: 'Introducer',
+        basis: 'percent_of_revenue',
+        ratePercent: 10,
+      });
+    });
+    await assertSucceeds(getDoc(doc(as('owner'), 'projects/p1/commissions/cm1')));
+  });
+
+  it('can read the import history', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'importBatches/b1'), { projectId: 'p1' });
+    });
+    await assertSucceeds(getDoc(doc(as('owner'), 'importBatches/b1')));
+  });
+
+  it('still cannot rewrite approved history, or an import record', async () => {
+    // Owning the business does not mean being able to edit what was approved
+    // last month. Nobody gets that, through a client, ever.
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'projects/p1/budgetVersions/v1'), {
+        projectId: 'p1',
+        versionNo: 1,
+        status: 'approved',
+        audit: AUDIT,
+      });
+      await setDoc(doc(context.firestore(), 'importBatches/b1'), { projectId: 'p1' });
+    });
+    await assertFails(
+      updateDoc(doc(as('owner'), 'projects/p1/budgetVersions/v1'), { status: 'draft' }),
+    );
+    await assertFails(updateDoc(doc(as('owner'), 'importBatches/b1'), { reversedAt: null }));
+  });
+
+  it('still cannot fabricate a rollup', async () => {
+    await assertFails(
+      setDoc(
+        doc(as('owner'), 'projects/p1/subEvents/se1'),
+        newSubEvent({ rollup: { ...EMPTY_FINANCIALS, forecastProfit: 50_000_00 } }),
+      ),
+    );
+  });
+});

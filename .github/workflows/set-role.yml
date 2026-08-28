@@ -1,9 +1,15 @@
 # Grant someone a role, without a command line.
 #
 # Roles are Firebase custom claims — the same thing the security rules read.
-# There is no screen inside the application for this, deliberately: the first
-# director has to be created from outside, or anyone who signed up could make
-# themselves one.
+#
+# There IS a screen inside the application for this now — People, which only an
+# owner can see. This workflow is how the FIRST owner is made, because that one
+# cannot come from inside: if it could, anyone who signed up could make
+# themselves one. After that, use the screen.
+#
+# It is also the way back if the last owner is ever lost. The application
+# refuses to remove its own last owner for exactly that reason, but a deleted
+# Firebase account is outside what it can refuse.
 #
 # To run it: the Actions tab in GitHub, "Set a user's role" on the left, then
 # "Run workflow". Type the email address, choose the role, click the button.
@@ -25,11 +31,11 @@ on:
         required: true
         type: choice
         options:
+          - owner
           - director
           - producer
           - finance
           - viewer
-          - admin
           - none
         default: viewer
 

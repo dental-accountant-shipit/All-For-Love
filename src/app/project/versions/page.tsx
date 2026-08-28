@@ -200,10 +200,10 @@ function Versions({ project }: { project: Project }) {
       </table>
 
       <p style={{ ...hint, marginTop: 20, maxWidth: '64ch' }}>
-        Approved and superseded versions cannot be changed by anyone, including
-        administrators — the security rules deny it. Historical versions can only be
-        created through the Admin Import pathway, which runs server-side and marks
-        everything it writes as imported.
+        Approved and superseded versions cannot be changed by anyone, the owner
+        included — the security rules deny it. Historical versions can only be created
+        through the import pathway, which runs server-side and marks everything it
+        writes as imported.
       </p>
     </>
   );

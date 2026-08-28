@@ -66,9 +66,9 @@ export default function AdminImportPage() {
   if (!can('adminImport')) {
     return (
       <p style={prose}>
-        Historical import is restricted to the administrator role. It is a separate role on
-        purpose — it can load old projects and nothing else, and no other role can reach this
-        screen.
+        Loading an old project from a workbook is restricted to the owner. It writes an
+        approved budget version, which nothing else in the application is allowed to do,
+        so it stays with the one role that answers for the whole system.
       </p>
     );
   }

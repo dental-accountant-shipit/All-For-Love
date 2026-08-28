@@ -29,8 +29,11 @@ export const LOCAL_PASSWORD = 'localdev';
  * quietly destroy the distinction the whole permission model rests on.
  */
 export const LOCAL_ACCOUNTS = [
+  // Owner first, because it is the one you want: everything a director can do
+  // plus the People screen, which is where every other account now comes from.
+  { email: 'owner@local', role: 'owner' },
   { email: 'director@local', role: 'director' },
-  { email: 'admin@local', role: 'admin' },
+  { email: 'producer@local', role: 'producer' },
 ];
 
 async function api(path, body) {

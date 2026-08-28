@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { ALL_ROLES, can, isRole } from '../roles';
+import { ALL_ROLES, ASSIGNABLE_ROLES, can, isRole } from '../roles';
 
 describe('roles', () => {
-  it('lets a director approve, and nobody else', () => {
+  it('lets an owner and a director approve, and nobody else', () => {
     const approvers = ALL_ROLES.filter((r) => can(r, 'approveBudget'));
-    expect(approvers).toEqual(['director']);
+    expect(approvers).toEqual(['owner', 'director']);
   });
 
   it('keeps commission away from the producer running the project', () => {
@@ -36,6 +36,29 @@ describe('roles', () => {
     expect(can('admin', 'editBudget')).toBe(false);
     expect(can('admin', 'approveBudget')).toBe(false);
     expect(can('admin', 'recordCost')).toBe(false);
+  });
+
+  it('makes owner everything a director is, plus granting access', () => {
+    // Owner is not a fifth kind of user with its own quirks — it is a director
+    // who can also decide who else gets in. Anything a director may do and an
+    // owner may not would be a bug, and this is the check that says so.
+    for (const capability of ['viewProjects', 'editBudget', 'approveBudget', 'recordCost', 'viewCommission', 'editCommission'] as const) {
+      expect(can('owner', capability), capability).toBe(can('director', capability));
+    }
+    expect(can('owner', 'manageUsers')).toBe(true);
+    expect(can('director', 'manageUsers')).toBe(false);
+  });
+
+  it('is the only role that can grant roles', () => {
+    const granters = ALL_ROLES.filter((r) => can(r, 'manageUsers'));
+    expect(granters).toEqual(['owner']);
+  });
+
+  it('does not offer the retired admin role when granting access', () => {
+    // 'admin' still works as a claim so nobody is locked out mid-migration,
+    // but it must not be something a person can be newly made.
+    expect(ASSIGNABLE_ROLES).not.toContain('admin');
+    expect(ASSIGNABLE_ROLES).toContain('owner');
   });
 
   it('gives an account with no role nothing at all', () => {

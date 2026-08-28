@@ -46,3 +46,31 @@ jobs:
           NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: build-check
           NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: build-check
           NEXT_PUBLIC_FIREBASE_APP_ID: build-check
+
+  rules:
+    name: Security rules
+    runs-on: ubuntu-latest
+
+    # The rules are the actual enforcement — the permission table in the
+    # application only decides which buttons to draw. Their tests skip silently
+    # when no emulator is reachable, which means that on a laptop without Java
+    # they quietly test nothing. This job is where they really run.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install
+        run: npm ci
+
+      - name: Rules against the Firestore emulator
+        run: npx firebase-tools emulators:exec --only firestore "npx vitest run rules"

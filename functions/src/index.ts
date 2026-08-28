@@ -12,12 +12,16 @@
  */
 
 import { initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError, onCall, type CallableRequest } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
+import { randomBytes } from 'node:crypto';
 
 import { versionTotals } from '../../src/domain/versionTotals';
+import { canChangeRole, looksLikeEmail, type Person } from '../../src/domain/userAdmin';
+import { ASSIGNABLE_ROLES, isRole } from '../../src/lib/auth/roles';
 import { rollupProject } from '../../src/domain/rollup';
 import { forecastCostItem } from '../../src/domain/forecast';
 import { validatePlan, type ImportPlan } from '../../src/domain/import/plan';
@@ -29,6 +33,7 @@ import {
   type Commitment,
   type CostItem,
   type ProjectSettings,
+  type Role,
   type SubEvent,
   type Transaction,
 } from '../../src/domain/types';
@@ -37,6 +42,16 @@ initializeApp();
 const db = getFirestore();
 
 const REGION = 'europe-west2';
+
+/**
+ * Who may run an import, or take one back.
+ *
+ * 'admin' is still accepted so that a claim issued before the owner role
+ * existed keeps working; nobody is given it any more.
+ */
+function canImport(role: unknown): boolean {
+  return role === 'owner' || role === 'admin';
+}
 
 // ---------------------------------------------------------------------------
 // Reading a project's financial state
@@ -194,7 +209,7 @@ export const approveBudgetVersion = onCall(
   { region: REGION },
   async (request): Promise<{ versionNo: number }> => {
     const role = request.auth?.token?.role;
-    if (role !== 'director') {
+    if (role !== 'director' && role !== 'owner') {
       throw new HttpsError('permission-denied', 'Only a director can approve a budget.');
     }
 
@@ -335,11 +350,8 @@ export const approveBudgetVersion = onCall(
 export const adminImportProject = onCall(
   { region: REGION, memory: '512MiB', timeoutSeconds: 300 },
   async (request): Promise<{ projectId: string; importBatchId: string; counts: Counts }> => {
-    if (request.auth?.token?.role !== 'admin') {
-      throw new HttpsError(
-        'permission-denied',
-        'Historical import is restricted to the administrator role.',
-      );
+    if (!canImport(request.auth?.token?.role)) {
+      throw new HttpsError('permission-denied', 'Historical import is restricted to the owner.');
     }
 
     const plan = (request.data as { plan?: ImportPlan }).plan;
@@ -518,7 +530,7 @@ function stripId<T extends { id: string }>(model: T): Omit<T, 'id'> {
 export const adminReverseImport = onCall(
   { region: REGION, memory: '512MiB', timeoutSeconds: 300 },
   async (request): Promise<{ deleted: number }> => {
-    if (request.auth?.token?.role !== 'admin') {
+    if (!canImport(request.auth?.token?.role)) {
       throw new HttpsError('permission-denied', 'Reversing an import is restricted.');
     }
 
@@ -584,3 +596,205 @@ export const adminReverseImport = onCall(
     return { deleted };
   },
 );
+
+// ---------------------------------------------------------------------------
+// People and what they may do
+// ---------------------------------------------------------------------------
+
+/**
+ * Access lives in Firebase Auth, not in a document.
+ *
+ * A role is a custom claim, which is why a security rule can check it without
+ * costing a read. That also makes Auth the single source of truth: there is no
+ * `users` document that could disagree with the claim and let somebody argue
+ * about which one is right. These three functions are the only way a claim is
+ * ever set, and they run server-side because a client that could write its own
+ * claim would have no permissions at all, only the appearance of them.
+ *
+ * A `users/{uid}` document is written alongside as a readable record — who is
+ * here, what they may do, who last changed it and when. It is never read to
+ * decide anything.
+ */
+
+const PEOPLE_LIMIT = 200;
+
+function requireOwner(request: CallableRequest<unknown>): string {
+  if (request.auth?.token?.role !== 'owner') {
+    throw new HttpsError('permission-denied', 'Only an owner can manage who has access.');
+  }
+  return request.auth.uid!;
+}
+
+async function everybody(): Promise<Person[]> {
+  const { users } = await getAuth().listUsers(PEOPLE_LIMIT);
+  return users.map((user) => ({
+    uid: user.uid,
+    email: user.email ?? null,
+    role: isRole(user.customClaims?.role) ? (user.customClaims!.role as Role) : null,
+  }));
+}
+
+interface PersonRow extends Person {
+  displayName: string | null;
+  disabled: boolean;
+  lastSignInAt: string | null;
+  createdAt: string;
+  /** True when the account exists but has never been signed into. */
+  awaitingFirstSignIn: boolean;
+}
+
+/** Everyone with an account, and what each of them may do. */
+export const listPeople = onCall(
+  { region: REGION },
+  async (request): Promise<{ people: PersonRow[] }> => {
+    requireOwner(request);
+
+    const { users } = await getAuth().listUsers(PEOPLE_LIMIT);
+    const people = users
+      .map((user): PersonRow => ({
+        uid: user.uid,
+        email: user.email ?? null,
+        displayName: user.displayName ?? null,
+        role: isRole(user.customClaims?.role) ? (user.customClaims!.role as Role) : null,
+        disabled: user.disabled,
+        lastSignInAt: user.metadata.lastSignInTime
+          ? new Date(user.metadata.lastSignInTime).toISOString()
+          : null,
+        createdAt: new Date(user.metadata.creationTime).toISOString(),
+        awaitingFirstSignIn: !user.metadata.lastSignInTime,
+      }))
+      .sort((a, b) => (a.email ?? '').localeCompare(b.email ?? ''));
+
+    return { people };
+  },
+);
+
+/**
+ * Change what somebody may do, or take their access away entirely.
+ *
+ * `null` means no role: the account still exists and can sign in, but every
+ * rule refuses it and the application shows the "no role yet" screen. That is
+ * deliberately not the same as deleting the account, which would throw away
+ * the audit trail of everything they did.
+ *
+ * The refusal that matters — never leaving the system without an owner — is
+ * decided by `canChangeRole` in the domain, where it is tested, rather than
+ * being remembered here.
+ */
+export const setUserRole = onCall(
+  { region: REGION },
+  async (request): Promise<{ uid: string; role: Role | null }> => {
+    const actorUid = requireOwner(request);
+
+    const { uid, role } = request.data as { uid?: string; role?: string | null };
+    if (!uid) throw new HttpsError('invalid-argument', 'uid is required.');
+
+    // null is meaningful — it is "no role", which is how access is removed —
+    // so it is checked before anything else rather than treated as missing.
+    if (role != null && (!isRole(role) || !ASSIGNABLE_ROLES.includes(role))) {
+      throw new HttpsError('invalid-argument', `${role} is not a role that can be given out.`);
+    }
+    const next: Role | null = role ?? null;
+
+    const people = await everybody();
+    const decision = canChangeRole(people, actorUid, uid, next);
+    if (!decision.allowed) {
+      throw new HttpsError('failed-precondition', decision.reason);
+    }
+
+    const at = new Date().toISOString();
+    await getAuth().setCustomUserClaims(uid, next === null ? null : { role: next });
+
+    // A claim lives inside an ID token, which the browser holds for up to an
+    // hour. Without this, taking somebody's access away would leave them with
+    // it until their token happened to expire. Revoking makes them sign in
+    // again, which is the honest version of what just happened.
+    await getAuth().revokeRefreshTokens(uid);
+
+    const subject = people.find((person) => person.uid === uid);
+    await db.doc(`users/${uid}`).set(
+      {
+        email: subject?.email ?? null,
+        role: next,
+        roleSetAt: at,
+        roleSetBy: actorUid,
+      },
+      { merge: true },
+    );
+
+    logger.info('Role changed', { uid, from: subject?.role ?? null, to: next, by: actorUid });
+    return { uid, role: next };
+  },
+);
+
+/**
+ * Invite somebody by email address.
+ *
+ * The account is created here with a random password that is never returned to
+ * anybody, including the person who sent the invitation. The caller then asks
+ * Firebase to send a password email, so the new person sets their own password
+ * and nobody ever handles it — not the owner, not this function, not a log.
+ *
+ * If the address already has an account this does not fail: it sets the role
+ * and reports that they were already here. Re-inviting a colleague who forgot
+ * they had access should not look like an error.
+ */
+export const invitePerson = onCall(
+  { region: REGION },
+  async (request): Promise<{ uid: string; email: string; created: boolean }> => {
+    const actorUid = requireOwner(request);
+
+    const { email, role } = request.data as { email?: string; role?: string };
+    if (!email || !looksLikeEmail(email)) {
+      throw new HttpsError('invalid-argument', 'That does not look like an email address.');
+    }
+    if (!role || !isRole(role) || !ASSIGNABLE_ROLES.includes(role)) {
+      throw new HttpsError('invalid-argument', 'Choose what they may do.');
+    }
+
+    const address = email.trim().toLowerCase();
+
+    let uid: string;
+    let created: boolean;
+    try {
+      const existing = await getAuth().getUserByEmail(address);
+      uid = existing.uid;
+      created = false;
+    } catch (error) {
+      // Only "there is no such person" means create one. Anything else — a
+      // network fault, a quota — must surface as itself rather than being
+      // turned into a confusing "email already exists" from the next call.
+      if ((error as { code?: string })?.code !== 'auth/user-not-found') {
+        logger.error('Could not look up an invited address', error);
+        throw new HttpsError('internal', 'The invitation could not be sent. Try again.');
+      }
+      const made = await getAuth().createUser({
+        email: address,
+        emailVerified: false,
+        // Never returned, never logged. The invitation email is what gets them
+        // in, and it makes them choose their own.
+        password: randomPassword(),
+      });
+      uid = made.uid;
+      created = true;
+    }
+
+    await getAuth().setCustomUserClaims(uid, { role });
+
+    const at = new Date().toISOString();
+    await db.doc(`users/${uid}`).set(
+      { email: address, role, roleSetAt: at, roleSetBy: actorUid, invitedAt: at },
+      { merge: true },
+    );
+
+    logger.info('Person invited', { uid, role, by: actorUid, created });
+    return { uid, email: address, created };
+  },
+);
+
+/** Long, random, and immediately forgotten. */
+function randomPassword(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%^&*-_';
+  const bytes = randomBytes(32);
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+}

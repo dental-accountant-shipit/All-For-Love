@@ -15,6 +15,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "../src/domain/**/*.ts"],
-  "exclude": ["../src/domain/__tests__/**"]
+  // The permission matrix comes along too. It is pure — a role in, a list of
+  // capabilities out, importing nothing but a type — and the function that
+  // grants roles has to agree with the screen that offers them.
+  "include": ["src/**/*.ts", "../src/domain/**/*.ts", "../src/lib/auth/**/*.ts"],
+  "exclude": ["../src/domain/__tests__/**", "../src/lib/auth/__tests__/**"]
 }

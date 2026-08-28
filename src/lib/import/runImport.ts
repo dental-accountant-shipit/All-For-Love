@@ -2,7 +2,7 @@
  * Calling the import.
  *
  * The write itself happens in a Cloud Function using the Admin SDK, because
- * the security rules give no client — administrator included — permission to
+ * the security rules give no client — the owner included — permission to
  * create an approved budget version. That is not an obstacle being worked
  * around; it is the design. There is no client path to approved history at
  * all, so the import cannot become one.
@@ -12,17 +12,8 @@
  * instead of showing "internal error" and leaving somebody to guess.
  */
 
-import {
-  connectFunctionsEmulator,
-  getFunctions,
-  httpsCallable,
-  type Functions,
-} from 'firebase/functions';
-
-import { firebaseApp, usingEmulators } from '../firestore/client';
+import { call } from '../functionsClient';
 import type { ImportPlan } from '../../domain/import/plan';
-
-const REGION = 'europe-west2';
 
 export interface ImportCounts {
   categories: number;
@@ -45,25 +36,9 @@ export class ImportUnavailableError extends Error {
   }
 }
 
-let instance: Functions | undefined;
-
-function functions(): Functions {
-  if (instance) return instance;
-  instance = getFunctions(firebaseApp(), REGION);
-  // Locally the functions run in the emulator, free, so the Admin Import and
-  // everything else that needs Blaze works without one.
-  if (usingEmulators) connectFunctionsEmulator(instance, '127.0.0.1', 5001);
-  return instance;
-}
-
 export async function runImport(plan: ImportPlan): Promise<ImportResult> {
   try {
-    const call = httpsCallable<{ plan: ImportPlan }, ImportResult>(
-      functions(),
-      'adminImportProject',
-    );
-    const { data } = await call({ plan });
-    return data;
+    return await call<{ plan: ImportPlan }, ImportResult>('adminImportProject', { plan });
   } catch (error) {
     throw translate(error);
   }
@@ -71,12 +46,9 @@ export async function runImport(plan: ImportPlan): Promise<ImportResult> {
 
 export async function reverseImport(importBatchId: string): Promise<{ deleted: number }> {
   try {
-    const call = httpsCallable<{ importBatchId: string }, { deleted: number }>(
-      functions(),
-      'adminReverseImport',
-    );
-    const { data } = await call({ importBatchId });
-    return data;
+    return await call<{ importBatchId: string }, { deleted: number }>('adminReverseImport', {
+      importBatchId,
+    });
   } catch (error) {
     throw translate(error);
   }
@@ -102,7 +74,7 @@ function translate(error: unknown): Error {
     );
   }
   if (code.includes('permission-denied')) {
-    return new Error('Your account is not an administrator, so it cannot run an import.');
+    return new Error('Your account is not an owner, so it cannot run an import.');
   }
   return new Error(message);
 }

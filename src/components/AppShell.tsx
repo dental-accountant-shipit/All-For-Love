@@ -79,7 +79,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <Doorway title="Nothing to see yet">
         <p style={S.doorwayBody}>
           Your account exists but has no role, so there is nothing you can see or do.
-          A director needs to grant one.
+          The owner needs to grant one.
         </p>
         <p>
           <button
@@ -97,8 +97,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const nav = [
     { href: '/projects', label: 'Projects', path: '/projects' },
     { href: '/suppliers', label: 'Suppliers', path: '/suppliers' },
-    // The only screen the administrator role can reach, and the only role that
-    // can reach it. Hidden from everyone else rather than shown and refused.
+    // Both hidden from everyone else rather than shown and refused. An owner
+    // sees both; nobody else sees either.
+    ...(can('manageUsers') ? [{ href: '/people', label: 'People', path: '/people' }] : []),
     ...(can('adminImport')
       ? [{ href: '/admin/import', label: 'Import', path: '/admin/import' }]
       : []),
