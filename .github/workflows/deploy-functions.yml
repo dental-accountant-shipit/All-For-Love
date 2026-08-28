@@ -42,7 +42,16 @@ jobs:
 
       - name: Deploy
         run: |
+          # --force sets up an artifact cleanup policy without prompting.
+          #
+          # Without it the deploy exits non-zero even when every function went
+          # up, and — more to the point — every deploy leaves its container
+          # images behind for ever. Firebase warns about it in passing: "this
+          # may result in a small monthly bill as container images accumulate
+          # over time". A bill that grows quietly is worse than one that is
+          # merely large.
           npx --yes firebase-tools@latest deploy \
             --only functions,storage \
+            --force \
             --non-interactive \
             --project all-for-love-8ca52
