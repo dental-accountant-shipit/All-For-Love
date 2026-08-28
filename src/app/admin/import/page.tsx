@@ -27,6 +27,7 @@ import {
   type PlanSection,
 } from '../../../domain/import/plan';
 import { formatGBP } from '../../../domain/money';
+import ImportHistory from '../../../components/ImportHistory';
 import { colour, type as typeToken } from '../../../design/tokens';
 
 export default function AdminImportPage() {
@@ -135,6 +136,7 @@ export default function AdminImportPage() {
             Open the projects list
           </a>
         </p>
+        <ImportHistory />
       </>
     );
   }
@@ -320,6 +322,7 @@ export default function AdminImportPage() {
       {error ? (
         <p style={{ ...prose, color: colour.signature, maxWidth: '62ch' }}>{error}</p>
       ) : null}
+      <ImportHistory />
     </>
   );
 }
