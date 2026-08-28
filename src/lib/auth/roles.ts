@@ -27,7 +27,16 @@ export type Capability =
   | 'recordClientApproval'
   | 'adminImport'
   /** Invite people and set what they may do. The one that can grant itself. */
-  | 'manageUsers';
+  | 'manageUsers'
+  /**
+   * Destroy a whole project and everything hanging off it.
+   *
+   * Nothing else in this system deletes. It is here for mistakes — a workbook
+   * imported twice, a project made to try something — and it stays with the
+   * one role that answers for the whole system rather than being spread across
+   * everyone who can edit a budget.
+   */
+  | 'deleteProject';
 
 const DIRECTOR: Capability[] = [
   'viewProjects',
@@ -45,10 +54,10 @@ const DIRECTOR: Capability[] = [
 ];
 
 const MATRIX: Record<Role, Capability[]> = {
-  // Everything a director does, and the two things that are about the system
-  // rather than about events: who may use it, and loading a past project from
-  // a workbook.
-  owner: [...DIRECTOR, 'manageUsers', 'adminImport'],
+  // Everything a director does, and the three things that are about the system
+  // rather than about events: who may use it, loading a past project from a
+  // workbook, and throwing one away.
+  owner: [...DIRECTOR, 'manageUsers', 'adminImport', 'deleteProject'],
   director: DIRECTOR,
   producer: [
     'viewProjects',

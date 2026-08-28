@@ -54,6 +54,13 @@ describe('roles', () => {
     expect(granters).toEqual(['owner']);
   });
 
+  it('is the only role that can destroy a project', () => {
+    // Everything else in this system refuses to delete. This is the one
+    // exception, and it is not spread across everyone who can edit a budget.
+    expect(ALL_ROLES.filter((r) => can(r, 'deleteProject'))).toEqual(['owner']);
+    expect(can('director', 'deleteProject')).toBe(false);
+  });
+
   it('does not offer the retired admin role when granting access', () => {
     // 'admin' still works as a claim so nobody is locked out mid-migration,
     // but it must not be something a person can be newly made.

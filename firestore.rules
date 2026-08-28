@@ -151,6 +151,16 @@ service cloud.firestore {
       allow read: if isStaff();
       allow create: if canEditBudget();
       allow update: if canEditBudget() && rollupUntouched() && importUntouched();
+
+      // Still false, owner included — and that is not a gap.
+      //
+      // An owner CAN delete a project, from the project screen. It goes through
+      // a Cloud Function, because a project owns categories, sub-events, cost
+      // items and their attachments, budget versions and the frozen lines
+      // beneath each one, plus commitments and transactions in top-level
+      // collections. Deleting a document in Firestore does not touch what is
+      // beneath it, so a client granted this rule would leave all of that
+      // behind: orphaned, unreachable, and still being paid for.
       allow delete: if false;
 
       // ------------------------------------------------------- sub-events
@@ -304,6 +314,18 @@ service cloud.firestore {
     // by whoever is undoing it.
     match /importBatches/{batchId} {
       allow read: if atLeastDirector() || isAdmin();
+      allow write: if false;
+    }
+
+    // ---------------------------------------------------------- deletions
+    //
+    // A project that was deleted, and what was in it when it went. This is the
+    // one action in the system that cannot be undone, so the record of it is
+    // the one record that must not be editable by the person who did it — not
+    // even to correct a typo. Written by the delete function through the Admin
+    // SDK, which does not pass this way.
+    match /deletions/{deletionId} {
+      allow read: if atLeastDirector();
       allow write: if false;
     }
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
+import DeleteProject from '../../components/DeleteProject';
 import FigureStrip from '../../components/FigureStrip';
 import ProjectScreen from '../../components/ProjectScreen';
 import { useAuth } from '../../lib/auth/AuthProvider';
@@ -193,6 +194,10 @@ function Overview({ project }: { project: Project }) {
           </table>
         </section>
       ) : null}
+
+      {/* Last on the page on purpose: below everything worth reading, and
+          invisible to anybody who is not an owner. */}
+      <DeleteProject project={project} rollup={rollup} />
     </>
   );
 }

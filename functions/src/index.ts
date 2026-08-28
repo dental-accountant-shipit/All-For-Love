@@ -21,6 +21,7 @@ import { randomBytes } from 'node:crypto';
 
 import { versionTotals } from '../../src/domain/versionTotals';
 import { canChangeRole, looksLikeEmail, type Person } from '../../src/domain/userAdmin';
+import { nameMatches, type ProjectContents } from '../../src/domain/projectDeletion';
 import { ASSIGNABLE_ROLES, isRole } from '../../src/lib/auth/roles';
 import { rollupProject } from '../../src/domain/rollup';
 import { forecastCostItem } from '../../src/domain/forecast';
@@ -564,34 +565,20 @@ export const adminReverseImport = onCall(
       );
     }
 
-    const writer = db.bulkWriter();
-    let deleted = 0;
-
-    const transactions = await db
-      .collection('transactions')
-      .where('projectId', '==', projectId)
-      .get();
-    for (const doc of transactions.docs) {
-      writer.delete(doc.ref);
-      deleted += 1;
-    }
-
-    for (const sub of ['costItems', 'categories', 'subEvents', 'budgetVersions', 'commissions']) {
-      const snap = await db.collection(`projects/${projectId}/${sub}`).get();
-      for (const doc of snap.docs) {
-        writer.delete(doc.ref);
-        deleted += 1;
-      }
-    }
-
-    writer.delete(db.doc(`projects/${projectId}`));
-    deleted += 1;
+    // Deleting by hand used to happen here, and it missed two things: the
+    // frozen line snapshots underneath each budget version, and the activity
+    // log. Both are subcollections of documents that were themselves being
+    // deleted, and deleting a document in Firestore does not touch what is
+    // beneath it. They were left behind, invisible and unreachable.
+    const deleted = await destroyProject(projectId);
 
     // The batch record itself stays, marked reversed. An import that happened
     // and was undone is part of the history of the system.
-    writer.update(batchRef, { reversedAt: new Date().toISOString(), reversedBy: request.auth!.uid });
+    await batchRef.update({
+      reversedAt: new Date().toISOString(),
+      reversedBy: request.auth!.uid,
+    });
 
-    await writer.close();
     logger.info(`Reversed import ${importBatchId}`, { projectId, deleted });
     return { deleted };
   },
@@ -798,3 +785,160 @@ function randomPassword(): string {
   const bytes = randomBytes(32);
   return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
 }
+
+// ---------------------------------------------------------------------------
+// Destroying a project
+// ---------------------------------------------------------------------------
+
+/**
+ * Everything a project owns, and where it lives.
+ *
+ * Two different places, which is the whole difficulty. Most of it hangs
+ * beneath the project document — categories, sub-events, cost items and their
+ * attachments, budget versions and the frozen line snapshots underneath each
+ * one, commissions, the activity log. But commitments, transactions and client
+ * invoices are top-level collections that merely carry a `projectId`, because
+ * money is queried across projects far more often than within one.
+ *
+ * Deleting a Firestore document does not delete what is beneath it. The
+ * subcollections survive, orphaned and unreachable, paid for monthly. That is
+ * what `recursiveDelete` is for, and it is why this is one function rather
+ * than a list of collection names that somebody has to remember to extend.
+ */
+const PROJECT_MONEY_COLLECTIONS = ['commitments', 'transactions', 'clientInvoices'] as const;
+
+async function destroyProject(projectId: string): Promise<number> {
+  let deleted = 0;
+
+  const writer = db.bulkWriter();
+  for (const collection of PROJECT_MONEY_COLLECTIONS) {
+    const snap = await db.collection(collection).where('projectId', '==', projectId).get();
+    for (const doc of snap.docs) {
+      writer.delete(doc.ref);
+      deleted += 1;
+    }
+  }
+  await writer.close();
+
+  // Recursive, so it reaches the version lines and the attachments without
+  // anybody having to have thought of them.
+  const projectRef = db.doc(`projects/${projectId}`);
+  deleted += await countBeneath(projectRef);
+  await db.recursiveDelete(projectRef);
+  deleted += 1;
+
+  return deleted;
+}
+
+/** How many documents live under a project, for the record of what was lost. */
+async function countBeneath(ref: FirebaseFirestore.DocumentReference): Promise<number> {
+  let count = 0;
+  for (const collection of await ref.listCollections()) {
+    const snap = await collection.get();
+    count += snap.size;
+    for (const doc of snap.docs) count += await countBeneath(doc.ref);
+  }
+  return count;
+}
+
+/** What was in a project, gathered before it stops existing. */
+async function readContents(projectId: string): Promise<ProjectContents> {
+  const [items, versions, commitments, transactions, projectSnap] = await Promise.all([
+    db.collection(`projects/${projectId}/costItems`).count().get(),
+    db.collection(`projects/${projectId}/budgetVersions`).where('status', '!=', 'draft').get(),
+    db.collection('commitments').where('projectId', '==', projectId).get(),
+    db.collection('transactions').where('projectId', '==', projectId).get(),
+    db.doc(`projects/${projectId}`).get(),
+  ]);
+
+  const rollup = (projectSnap.data()?.rollup ?? {}) as Record<string, number>;
+
+  return {
+    costItems: items.data().count,
+    approvedVersions: versions.size,
+    committedTotal: commitments.docs.reduce(
+      (total, doc) => total + ((doc.data().amountExVat as number) ?? 0),
+      0,
+    ),
+    actualTotal: transactions.docs.reduce(
+      (total, doc) => total + ((doc.data().amountBaseExVat as number) ?? 0),
+      0,
+    ),
+    agreedClientRevenue: rollup.currentAgreedClientRevenue ?? 0,
+  };
+}
+
+/**
+ * Delete a project and everything it owns.
+ *
+ * Restricted to the owner, and it asks for the project's name to be typed back
+ * — not as ceremony, but because the two things most likely to be deleted by
+ * mistake are two imports of the same workbook, which differ by a "(1)" on the
+ * end. An id held by a screen that has been open since this morning is not
+ * enough on its own.
+ *
+ * A record of what was destroyed survives in `deletions`. It is the one thing
+ * that cannot be recovered afterwards, so it is written first in spirit: what
+ * the project was called, who deleted it, when, and what was in it. A deletion
+ * nobody can account for later is worse than no deletion at all.
+ */
+export const deleteProject = onCall(
+  { region: REGION, memory: '512MiB', timeoutSeconds: 300 },
+  async (request): Promise<{ deleted: number }> => {
+    if (request.auth?.token?.role !== 'owner') {
+      throw new HttpsError('permission-denied', 'Only an owner can delete a project.');
+    }
+
+    const { projectId, confirmName } = request.data as {
+      projectId?: string;
+      confirmName?: string;
+    };
+    if (!projectId) throw new HttpsError('invalid-argument', 'projectId is required.');
+
+    const projectRef = db.doc(`projects/${projectId}`);
+    const projectSnap = await projectRef.get();
+    if (!projectSnap.exists) throw new HttpsError('not-found', 'That project no longer exists.');
+
+    const project = projectSnap.data()!;
+    const name = (project.name as string) ?? '';
+
+    // Checked here rather than only on the screen. A client-side confirmation
+    // is a courtesy; this is the thing that actually stops the wrong project
+    // being deleted.
+    if (!nameMatches(confirmName ?? '', name)) {
+      throw new HttpsError(
+        'failed-precondition',
+        `To delete this project, type its name exactly: ${name}`,
+      );
+    }
+
+    const contents = await readContents(projectId);
+    const at = new Date().toISOString();
+
+    const deleted = await destroyProject(projectId);
+
+    await db.collection('deletions').add({
+      projectId,
+      name,
+      clientName: project.clientName ?? null,
+      deletedAt: at,
+      deletedBy: request.auth!.uid,
+      documentsRemoved: deleted,
+      contents,
+    });
+
+    // An import whose project is gone must not still offer an Undo.
+    const batches = await db
+      .collection('importBatches')
+      .where('projectId', '==', projectId)
+      .get();
+    for (const batch of batches.docs) {
+      if (!batch.data().reversedAt) {
+        await batch.ref.update({ reversedAt: at, reversedBy: request.auth!.uid });
+      }
+    }
+
+    logger.info('Project deleted', { projectId, name, deleted, by: request.auth!.uid });
+    return { deleted };
+  },
+);

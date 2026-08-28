@@ -21,7 +21,7 @@ import {
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import { readFileSync } from 'node:fs';
-import { doc, getDoc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 
 const HOST = '127.0.0.1';
 const PORT = 8080;
@@ -450,5 +450,46 @@ suite('the owner', () => {
         newSubEvent({ rollup: { ...EMPTY_FINANCIALS, forecastProfit: 50_000_00 } }),
       ),
     );
+  });
+});
+
+suite('a project cannot be deleted from a browser', () => {
+  // The delete button on the project screen calls a Cloud Function. It has to,
+  // because a project owns categories, sub-events, cost items, budget versions
+  // and the frozen lines beneath them, plus commitments and transactions in
+  // top-level collections. A client that deleted the project document would
+  // leave every one of those behind, orphaned and unreachable.
+  //
+  // So the rule is the same for the owner as for everybody else: no.
+
+  it('refuses every role, owner included', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'projects/p1'), { name: 'Painted Hall' });
+    });
+    for (const role of ['owner', 'director', 'producer', 'finance', 'viewer', 'admin', null]) {
+      await assertFails(deleteDoc(doc(as(role), 'projects/p1')));
+    }
+  });
+
+  it('records the deletion where nobody can edit it', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'deletions/d1'), {
+        name: 'Painted Hall',
+        deletedBy: 'uid_owner',
+      });
+    });
+    // Readable by the people who would ask what happened to a project…
+    await assertSucceeds(getDoc(doc(as('owner'), 'deletions/d1')));
+    await assertSucceeds(getDoc(doc(as('director'), 'deletions/d1')));
+    // …and not editable by the person who did it.
+    await assertFails(updateDoc(doc(as('owner'), 'deletions/d1'), { name: 'Something else' }));
+    await assertFails(deleteDoc(doc(as('owner'), 'deletions/d1')));
+  });
+
+  it('keeps the record away from people who cannot see commission either', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'deletions/d1'), { name: 'Painted Hall' });
+    });
+    await assertFails(getDoc(doc(as('producer'), 'deletions/d1')));
   });
 });
