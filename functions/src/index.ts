@@ -22,6 +22,7 @@ import { randomBytes } from 'node:crypto';
 import { versionTotals } from '../../src/domain/versionTotals';
 import { canChangeRole, looksLikeEmail, type Person } from '../../src/domain/userAdmin';
 import { nameMatches, type ProjectContents } from '../../src/domain/projectDeletion';
+import { canWithdrawApproval } from '../../src/domain/approvalWithdrawal';
 import { ASSIGNABLE_ROLES, isRole } from '../../src/lib/auth/roles';
 import { rollupProject } from '../../src/domain/rollup';
 import { forecastCostItem } from '../../src/domain/forecast';
@@ -34,6 +35,7 @@ import {
   type Commitment,
   type CostItem,
   type ProjectSettings,
+  type BudgetVersion,
   type Role,
   type SubEvent,
   type Transaction,
@@ -940,5 +942,163 @@ export const deleteProject = onCall(
 
     logger.info('Project deleted', { projectId, name, deleted, by: request.auth!.uid });
     return { deleted };
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Taking an approval back
+// ---------------------------------------------------------------------------
+
+/**
+ * Withdraw a budget approval.
+ *
+ * Approving is the one action that freezes something: an immutable line
+ * snapshot, the previous version superseded, every cost item's approved
+ * figures pinned. This undoes exactly that, and the reason it can exist
+ * without making approval meaningless is that it only ever unwinds from the
+ * top and always lands somewhere the system could have got to legitimately —
+ * the previous version approved, its frozen lines re-pinned, as though the
+ * later approval never happened.
+ *
+ * What it deliberately does NOT touch is `draft`. Somebody may have spent the
+ * afternoon editing since; withdrawal takes back a decision, not their work.
+ *
+ * The refusals live in `src/domain/approvalWithdrawal.ts` — pure and tested,
+ * because "only the most recent, and never with a draft open" is precisely the
+ * kind of rule that gets remembered wrongly if it only exists in here.
+ */
+export const withdrawApproval = onCall(
+  { region: REGION, memory: '512MiB', timeoutSeconds: 120 },
+  async (request): Promise<{ nowApprovedVersionNo: number | null }> => {
+    if (request.auth?.token?.role !== 'owner') {
+      throw new HttpsError('permission-denied', 'Only an owner can withdraw an approval.');
+    }
+
+    const { projectId, versionId } = request.data as {
+      projectId?: string;
+      versionId?: string;
+    };
+    if (!projectId || !versionId) {
+      throw new HttpsError('invalid-argument', 'projectId and versionId are required.');
+    }
+
+    const uid = request.auth!.uid;
+    const at = new Date().toISOString();
+    const projectRef = db.doc(`projects/${projectId}`);
+
+    const [projectSnap, versionsSnap, itemsSnap] = await Promise.all([
+      projectRef.get(),
+      db.collection(`projects/${projectId}/budgetVersions`).get(),
+      db.collection(`projects/${projectId}/costItems`).get(),
+    ]);
+
+    if (!projectSnap.exists) throw new HttpsError('not-found', 'That project no longer exists.');
+    const project = projectSnap.data()!;
+
+    const versions = versionsSnap.docs.map(
+      (docSnap) => ({ ...docSnap.data(), id: docSnap.id }) as BudgetVersion,
+    );
+
+    const decision = canWithdrawApproval(
+      versions,
+      {
+        currentApprovedVersionId: (project.currentApprovedVersionId as string) ?? null,
+        openDraftVersionId: (project.openDraftVersionId as string) ?? null,
+      },
+      versionId,
+    );
+    if (!decision.allowed) {
+      throw new HttpsError('failed-precondition', decision.reason);
+    }
+
+    const { version, fallingBackTo } = decision;
+
+    // The frozen snapshot of the version we are going back to. This is the
+    // whole reason a re-pin is possible rather than a guess: what each line
+    // was worth under that approval was written down at the time.
+    const fallbackLines = new Map<string, FirebaseFirestore.DocumentData>();
+    if (fallingBackTo) {
+      const snap = await db
+        .collection(`projects/${projectId}/budgetVersions/${fallingBackTo.id}/lines`)
+        .get();
+      for (const line of snap.docs) fallbackLines.set(line.id, line.data());
+    }
+
+    const batch = db.batch();
+
+    for (const itemSnap of itemsSnap.docs) {
+      const line = fallbackLines.get(itemSnap.id);
+      const update: Record<string, unknown> = {
+        approved: line
+          ? {
+              ...(line.values as Record<string, unknown>),
+              versionId: fallingBackTo!.id,
+              versionNo: fallingBackTo!.versionNo,
+              approvedAt: fallingBackTo!.approvedAt,
+            }
+          : // A line added after the version we are falling back to was never
+            // in it, so it has no approved figures — the same state it was in
+            // before this approval.
+            null,
+      };
+
+      // `original` is pinned at a line's first approval and never written
+      // again. If that first approval is the one being removed, the pin has to
+      // go with it, or the line would claim an original value from a version
+      // that no longer exists.
+      const original = itemSnap.data().original as { versionId?: string } | null | undefined;
+      if (original?.versionId === versionId) update.original = null;
+
+      batch.update(itemSnap.ref, update);
+    }
+
+    if (fallingBackTo) {
+      batch.update(db.doc(`projects/${projectId}/budgetVersions/${fallingBackTo.id}`), {
+        status: 'approved',
+        supersededAt: null,
+      });
+    }
+
+    batch.update(projectRef, {
+      currentApprovedVersionId: fallingBackTo?.id ?? null,
+      originalApprovedVersionId:
+        project.originalApprovedVersionId === versionId
+          ? (fallingBackTo?.id ?? null)
+          : (project.originalApprovedVersionId ?? null),
+    });
+
+    // Written before the version disappears, and to the activity log rather
+    // than anywhere a client can reach. An approval that was taken back is
+    // part of the history of the project even though the version is not.
+    batch.set(db.collection(`projects/${projectId}/activity`).doc(), {
+      type: 'approval_withdrawn',
+      versionId,
+      versionNo: version.versionNo,
+      approvedAt: version.approvedAt ?? null,
+      approvedBy: version.approvedBy ?? null,
+      totals: version.totals ?? null,
+      fellBackToVersionNo: fallingBackTo?.versionNo ?? null,
+      by: uid,
+      at,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    await batch.commit();
+
+    // Last, and separately: the version itself, with its frozen lines
+    // underneath it. Recursive, because deleting the version document alone
+    // would leave the snapshot behind, orphaned and unreachable.
+    await db.recursiveDelete(db.doc(`projects/${projectId}/budgetVersions/${versionId}`));
+
+    await recomputeProject(projectId);
+
+    logger.info('Approval withdrawn', {
+      projectId,
+      versionNo: version.versionNo,
+      fellBackTo: fallingBackTo?.versionNo ?? null,
+      by: uid,
+    });
+
+    return { nowApprovedVersionNo: fallingBackTo?.versionNo ?? null };
   },
 );

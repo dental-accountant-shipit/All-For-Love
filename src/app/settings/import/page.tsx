@@ -28,6 +28,7 @@ import {
 } from '../../../domain/import/plan';
 import { formatGBP } from '../../../domain/money';
 import ImportHistory from '../../../components/ImportHistory';
+import SettingsShell from '../../../components/SettingsNav';
 import { colour, type as typeToken } from '../../../design/tokens';
 
 export default function AdminImportPage() {
@@ -62,15 +63,10 @@ export default function AdminImportPage() {
 
   const problems = plan ? validatePlan(plan) : [];
 
-  if (!user) return null;
-  if (!can('adminImport')) {
-    return (
-      <p style={prose}>
-        Loading an old project from a workbook is restricted to the owner. It writes an
-        approved budget version, which nothing else in the application is allowed to do,
-        so it stays with the one role that answers for the whole system.
-      </p>
-    );
+  // The permission gate lives in SettingsShell, which holds it once for the
+  // whole settings area rather than each screen keeping a copy to drift.
+  if (!user || !can('adminImport')) {
+    return <SettingsShell title="Import a past project">{null}</SettingsShell>;
   }
 
   async function chooseFile(file: File) {
@@ -119,8 +115,7 @@ export default function AdminImportPage() {
 
   if (result) {
     return (
-      <>
-        <h1 style={h1}>Imported</h1>
+      <SettingsShell title="Imported">
         <p style={prose}>
           <strong>{plan?.projectName}</strong> is in the system: {result.counts.costItems} budget
           lines across {result.counts.categories} categories, with {result.counts.transactions}{' '}
@@ -137,13 +132,12 @@ export default function AdminImportPage() {
           </a>
         </p>
         <ImportHistory />
-      </>
+      </SettingsShell>
     );
   }
 
   return (
-    <>
-      <h1 style={h1}>Import a past project</h1>
+    <SettingsShell title="Import a past project">
       <p style={{ ...prose, maxWidth: '64ch' }}>
         For loading finished events out of the old workbooks. Everything is shown before anything
         is written, and the whole run can be undone afterwards.
@@ -323,7 +317,7 @@ export default function AdminImportPage() {
         <p style={{ ...prose, color: colour.signature, maxWidth: '62ch' }}>{error}</p>
       ) : null}
       <ImportHistory />
-    </>
+    </SettingsShell>
   );
 }
 
@@ -452,13 +446,6 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
 
 // ---------------------------------------------------------------------------
 
-const h1: React.CSSProperties = {
-  fontFamily: typeToken.serif,
-  fontSize: 32,
-  fontWeight: 400,
-  lineHeight: 1.1,
-  margin: '0 0 10px',
-};
 const h2: React.CSSProperties = {
   fontFamily: typeToken.serif,
   fontSize: 19,

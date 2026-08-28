@@ -97,12 +97,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const nav = [
     { href: '/projects', label: 'Projects', path: '/projects' },
     { href: '/suppliers', label: 'Suppliers', path: '/suppliers' },
-    // Both hidden from everyone else rather than shown and refused. An owner
-    // sees both; nobody else sees either.
-    ...(can('manageUsers') ? [{ href: '/people', label: 'People', path: '/people' }] : []),
-    ...(can('adminImport')
-      ? [{ href: '/admin/import', label: 'Import', path: '/admin/import' }]
-      : []),
+    // People, the workbook import and deleting a project are one thing —
+    // running the system rather than running an event — so they are one menu
+    // item rather than three, and it is hidden from everyone but the owner
+    // rather than shown and refused.
+    ...(can('manageUsers') ? [{ href: '/settings', label: 'Settings', path: '/settings' }] : []),
   ];
 
   return (
@@ -116,7 +115,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
           <nav style={S.nav}>
             {nav.map((item) => {
-              const on = pathname === item.path;
+              // Prefix, not equality: /settings/people is still Settings, and
+              // a tab lighting nothing in the bar above it reads as being lost.
+              const on = pathname === item.path || pathname.startsWith(`${item.path}/`);
               return (
                 <Link
                   key={item.path}

@@ -83,7 +83,7 @@ describe('Firebase Hosting can serve what the build produces', () => {
     expect(found).toContain('/');
     expect(found).toContain('/projects');
     expect(found).toContain('/project/budget');
-    expect(found).toContain('/admin/import');
+    expect(found).toContain('/settings/import');
     expect(found.length).toBeGreaterThanOrEqual(8);
   });
 

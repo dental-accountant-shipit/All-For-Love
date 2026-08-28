@@ -19,14 +19,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { useAuth } from '../../lib/auth/AuthProvider';
-import { invitePerson, listPeople, setUserRole, type PersonRow } from '../../lib/people/manage';
-import { ASSIGNABLE_ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS } from '../../lib/auth/roles';
-import { alreadyInvited, looksLikeEmail } from '../../domain/userAdmin';
-import type { Role } from '../../domain/types';
-import PageHeader from '../../components/PageHeader';
-import EmptyState from '../../components/EmptyState';
-import { colour, radius, type } from '../../design/tokens';
+import { useAuth } from '../../../lib/auth/AuthProvider';
+import { invitePerson, listPeople, setUserRole, type PersonRow } from '../../../lib/people/manage';
+import { ASSIGNABLE_ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS } from '../../../lib/auth/roles';
+import { alreadyInvited, looksLikeEmail } from '../../../domain/userAdmin';
+import type { Role } from '../../../domain/types';
+import SettingsShell from '../../../components/SettingsNav';
+import EmptyState from '../../../components/EmptyState';
+import { colour, radius, type } from '../../../design/tokens';
 import {
   buttonPrimary,
   buttonQuiet,
@@ -36,7 +36,7 @@ import {
   label as labelStyle,
   tableCell,
   tableHead,
-} from '../../design/ui';
+} from '../../../design/ui';
 
 export default function PeoplePage() {
   const { user, can } = useAuth();
@@ -63,21 +63,9 @@ export default function PeoplePage() {
     if (mayManage) void refresh();
   }, [mayManage, refresh]);
 
-  if (!user) return null;
-
-  if (!mayManage) {
-    return (
-      <>
-        <PageHeader title="People" />
-        <EmptyState title="This one is not yours">
-          <p>
-            Only an owner can see who has access or change it. If that should be you, ask
-            whoever set the system up.
-          </p>
-        </EmptyState>
-      </>
-    );
-  }
+  // The permission gate lives in SettingsShell, which holds it for the whole
+  // settings area rather than each screen keeping its own copy to drift.
+  if (!user || !mayManage) return <SettingsShell title="People">{null}</SettingsShell>;
 
   async function change(person: PersonRow, next: Role | null) {
     const itsYou = person.uid === user!.uid;
@@ -106,15 +94,12 @@ export default function PeoplePage() {
   }
 
   return (
-    <>
-      <PageHeader
-        title="People"
-        meta={
-          people
-            ? `${people.length} ${people.length === 1 ? 'account' : 'accounts'}`
-            : 'Loading…'
-        }
-        actions={
+    <SettingsShell
+      title="People"
+      meta={
+        people ? `${people.length} ${people.length === 1 ? 'account' : 'accounts'}` : 'Loading…'
+      }
+      actions={
           <button
             type="button"
             style={inviting ? buttonQuiet : buttonPrimary}
@@ -126,9 +111,8 @@ export default function PeoplePage() {
           >
             {inviting ? 'Cancel' : 'Invite somebody'}
           </button>
-        }
-      />
-
+      }
+    >
       {inviting ? (
         <InviteForm
           people={people ?? []}
@@ -227,7 +211,7 @@ export default function PeoplePage() {
         somebody the ability to remove them. Give it to the people who would be
         entitled to it anyway.
       </p>
-    </>
+    </SettingsShell>
   );
 }
 

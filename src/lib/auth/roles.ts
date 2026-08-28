@@ -36,7 +36,16 @@ export type Capability =
    * one role that answers for the whole system rather than being spread across
    * everyone who can edit a budget.
    */
-  | 'deleteProject';
+  | 'deleteProject'
+  /**
+   * Take back a budget approval, deleting the version and restoring the one
+   * before it.
+   *
+   * Separate from approving. Approving is a director's judgement about a
+   * budget; withdrawing one is a decision about the record, and the record is
+   * what every other screen is believed on.
+   */
+  | 'withdrawApproval';
 
 const DIRECTOR: Capability[] = [
   'viewProjects',
@@ -57,7 +66,7 @@ const MATRIX: Record<Role, Capability[]> = {
   // Everything a director does, and the three things that are about the system
   // rather than about events: who may use it, loading a past project from a
   // workbook, and throwing one away.
-  owner: [...DIRECTOR, 'manageUsers', 'adminImport', 'deleteProject'],
+  owner: [...DIRECTOR, 'manageUsers', 'adminImport', 'deleteProject', 'withdrawApproval'],
   director: DIRECTOR,
   producer: [
     'viewProjects',

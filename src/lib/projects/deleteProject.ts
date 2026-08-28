@@ -30,3 +30,26 @@ export async function deleteProject(
     throw new Error(callableMessage(error, 'The project could not be deleted.'));
   }
 }
+
+/**
+ * Take back a budget approval.
+ *
+ * Also server-side, and for a sharper reason than deletion: it rewrites every
+ * cost item's approved figures from the frozen snapshot of the version being
+ * restored. The security rules give no client any write to an approved
+ * version, and this is the operation that proves why — a browser that could do
+ * this could also do half of it.
+ */
+export async function withdrawApproval(
+  projectId: string,
+  versionId: string,
+): Promise<{ nowApprovedVersionNo: number | null }> {
+  try {
+    return await call<
+      { projectId: string; versionId: string },
+      { nowApprovedVersionNo: number | null }
+    >('withdrawApproval', { projectId, versionId });
+  } catch (error) {
+    throw new Error(callableMessage(error, 'The approval could not be withdrawn.'));
+  }
+}
