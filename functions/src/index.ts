@@ -18,6 +18,7 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { HttpsError, onCall, type CallableRequest } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
 import { randomBytes } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 
 import { versionTotals } from '../../src/domain/versionTotals';
 import { canChangeRole, looksLikeEmail, type Person } from '../../src/domain/userAdmin';
@@ -45,6 +46,13 @@ initializeApp();
 const db = getFirestore();
 
 const REGION = 'europe-west2';
+
+/**
+ * A ceiling on the rollup triggers, so that a fault costs minutes rather than
+ * days. It is not the fix for anything — it is what stops the next mistake
+ * from scaling. Twenty-eight instances ran unattended for five days once.
+ */
+const MAX_ROLLUP_INSTANCES = 10;
 
 /**
  * Who may run an import, or take one back.
@@ -153,19 +161,54 @@ function projectIdOf(data: FirebaseFirestore.DocumentData | undefined): string |
   return typeof id === 'string' ? id : null;
 }
 
+/**
+ * True when a write changed nothing but the `rollup` block — that is, it is
+ * this chain's own output coming back, not somebody editing a cost item.
+ *
+ * Deliberately narrow. A create, a delete, or any change outside `rollup` is
+ * treated as real work, because a guard that is too eager would quietly stop
+ * the figures updating, and a total that silently stops moving is worse than
+ * the loop it was meant to prevent.
+ */
+function isRollupEcho(
+  before: FirebaseFirestore.DocumentData | undefined,
+  after: FirebaseFirestore.DocumentData | undefined,
+): boolean {
+  if (!before || !after) return false;
+  const withoutRollup = ({ rollup, ...rest }: FirebaseFirestore.DocumentData) => {
+    void rollup;
+    return rest;
+  };
+  return isDeepStrictEqual(withoutRollup(before), withoutRollup(after));
+}
+
 // ---------------------------------------------------------------------------
 // Triggers
 // ---------------------------------------------------------------------------
 
 export const onCostItemWritten = onDocumentWritten(
-  { region: REGION, document: 'projects/{projectId}/costItems/{costItemId}' },
+  {
+    region: REGION,
+    maxInstances: MAX_ROLLUP_INSTANCES,
+    document: 'projects/{projectId}/costItems/{costItemId}',
+  },
   async (event) => {
+    // A recompute writes `rollup` onto every cost item in the project, and
+    // every one of those writes fires this trigger again. Nothing converges:
+    // `recomputeSeq` increments on each pass, so each echo is a genuine change
+    // and the next generation is as large as the last. Unnoticed from 27
+    // August 2026, it reached 145 invocations a second and 1.7 billion
+    // Firestore reads a day.
+    //
+    // The echo is this function's own writing coming back. It is not a reason
+    // to recompute anything.
+    if (isRollupEcho(event.data?.before.data(), event.data?.after.data())) return;
     await recomputeProject(event.params.projectId);
   },
 );
 
 export const onCommitmentWritten = onDocumentWritten(
-  { region: REGION, document: 'commitments/{commitmentId}' },
+  { region: REGION, maxInstances: MAX_ROLLUP_INSTANCES, document: 'commitments/{commitmentId}' },
   async (event) => {
     const projectId =
       projectIdOf(event.data?.after.data()) ?? projectIdOf(event.data?.before.data());
@@ -174,7 +217,7 @@ export const onCommitmentWritten = onDocumentWritten(
 );
 
 export const onTransactionWritten = onDocumentWritten(
-  { region: REGION, document: 'transactions/{transactionId}' },
+  { region: REGION, maxInstances: MAX_ROLLUP_INSTANCES, document: 'transactions/{transactionId}' },
   async (event) => {
     // A transaction can move between projects during allocation, and can
     // arrive with no project at all. Both ends are recomputed.
@@ -186,7 +229,11 @@ export const onTransactionWritten = onDocumentWritten(
 );
 
 export const onCommissionWritten = onDocumentWritten(
-  { region: REGION, document: 'projects/{projectId}/commissions/{commissionId}' },
+  {
+    region: REGION,
+    maxInstances: MAX_ROLLUP_INSTANCES,
+    document: 'projects/{projectId}/commissions/{commissionId}',
+  },
   async (event) => {
     await recomputeProject(event.params.projectId);
   },
